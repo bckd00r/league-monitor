@@ -176,8 +176,6 @@ npm run dev:follower
 
 ## 🌐 VPS Deployment
 
-See [VPS-SETUP.md](./VPS-SETUP.md) for detailed deployment guide.
-
 Quick VPS setup:
 ```bash
 # Install Node.js
@@ -222,13 +220,6 @@ npm run follower your-token-here
 - Verify RiotClientInstalls.json exists
 - Ensure sufficient permissions
 
-## 🔒 Security
-
-- Session tokens are randomly generated (32 characters)
-- Sessions auto-expire after 24 hours
-- WebSocket connections only (no HTTP endpoints for sensitive data)
-- No authentication required for relay health check
-
 ## 📄 License
 
 MIT
@@ -236,9 +227,3 @@ MIT
 ## 🤝 Contributing
 
 Contributions are welcome! Please feel free to submit a Pull Request.
-
-## 📚 Documentation
-
-- [Quick Start Guide](./QUICK-START.md)
-- [VPS Setup Guide](./VPS-SETUP.md)
-- [Troubleshooting Guide](./TROUBLESHOOTING.md)
