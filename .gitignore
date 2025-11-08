@@ -6,3 +6,6 @@ dist/
 .env.local
 .vscode/
 .idea/
+
+# Config file (users should copy from config.example.json)
+config.json

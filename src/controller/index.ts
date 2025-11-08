@@ -1,13 +1,12 @@
 import { ClientMonitor } from './client-monitor.js';
 import { SessionClient } from './session-client.js';
 import { Logger } from '../shared/logger.js';
+import { getControllerConfig } from '../shared/config.js';
 
 const logger = new Logger('Controller');
 
-// Configuration - change this to your relay server
-const RELAY_SERVER_HOST = '37.59.96.187'; // or remote server IP
-const RELAY_SERVER_PORT = 8080;
-const MONITOR_INTERVAL = 5000;
+// Load configuration from config.json
+const config = getControllerConfig();
 
 async function main() {
   logger.info('Starting League Client Controller (Mac) with Session Token...');
@@ -18,10 +17,14 @@ async function main() {
   }
 
   // Initialize session client (creates new session)
-  const sessionClient = new SessionClient(RELAY_SERVER_HOST, RELAY_SERVER_PORT, 'controller');
+  const sessionClient = new SessionClient(
+    config.relayServerHost,
+    config.relayServerPort,
+    'controller'
+  );
   
   // Initialize client monitor
-  const monitor = new ClientMonitor(MONITOR_INTERVAL);
+  const monitor = new ClientMonitor(config.monitorInterval);
 
   // Set callback to broadcast when client restarts
   monitor.setRestartCallback(() => {

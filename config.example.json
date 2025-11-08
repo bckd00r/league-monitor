@@ -1,0 +1,17 @@
+{
+  "relay": {
+    "port": 8080,
+    "host": "0.0.0.0"
+  },
+  "controller": {
+    "relayServerHost": "localhost",
+    "relayServerPort": 8080,
+    "monitorInterval": 5000,
+    "killGameProcess": true
+  },
+  "follower": {
+    "relayServerHost": "localhost",
+    "relayServerPort": 8080,
+    "restartDelay": 30000
+  }
+}

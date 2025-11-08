@@ -2,6 +2,7 @@ import { WebSocketServer, WebSocket } from 'ws';
 import { createServer } from 'http';
 import { SessionManager } from './session-manager.js';
 import { Logger } from '../shared/logger.js';
+import { getRelayConfig } from '../shared/config.js';
 import crypto from 'crypto';
 
 const logger = new Logger('RelayServer');
@@ -183,7 +184,8 @@ class RelayServer {
 }
 
 // Start server
-const PORT = parseInt(process.env.PORT || '8080');
+const config = getRelayConfig();
+const PORT = parseInt(process.env.PORT || config.port.toString());
 const server = new RelayServer(PORT);
 server.start();
 

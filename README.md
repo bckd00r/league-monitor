@@ -1,124 +1,244 @@
-# League Client Monitor - Multi-PC Sync System
+# League Client Monitor
 
-A TypeScript-based system for monitoring and synchronizing League of Legends client across multiple computers.
+A TypeScript-based multi-computer synchronization system for League of Legends client management using session tokens and a central relay server.
 
-## Architecture
+## 🎯 Overview
 
-- **Controller (Mac)**: Monitors LeagueClient, auto-restarts when closed, kills game process, broadcasts restart events
-- **Client (PC 2)**: Listens for restart events and launches client after delay
+This system allows you to synchronize League of Legends client behavior across multiple computers. When the client restarts on one machine (controller), all connected machines (followers) automatically restart their clients after a configurable delay.
 
-## Features
+## 🏗️ Architecture
 
-### Controller (Mac - Primary Computer)
-- Monitors LeagueClient process every 5 seconds
-- Auto-restarts LeagueClient if it closes
-- Instantly kills "League of Legends" game process if detected
-- Broadcasts restart events to connected clients via WebSocket
+```
+┌─────────────┐          ┌─────────────┐          ┌─────────────┐
+│   Mac       │          │     VPS     │          │   Windows   │
+│ (Controller)│◄────────►│Relay Server │◄────────►│  (Follower) │
+│             │ WebSocket│             │ WebSocket│             │
+└─────────────┘          └─────────────┘          └─────────────┘
+```
 
-### Client (Secondary Computer)
-- Connects to controller via WebSocket
-- Waits 30 seconds after receiving restart event
-- Launches LeagueClient automatically
+### Components
 
-## Installation
+**Relay Server (VPS or Local)**
+- Central hub for session management
+- Session token generation and validation
+- Message routing between controller and followers
+- Runs on any Node.js-compatible server
+
+**Controller (Primary Machine)**
+- Monitors LeagueClient process (every 5 seconds)
+- Auto-restarts client when it closes
+- Kills game process instantly if detected
+- Creates session and broadcasts events to followers
+- Responds to status requests
+
+**Follower (Secondary Machine)**
+- Connects using session token from controller
+- Syncs initial state with controller on join
+- Receives restart notifications
+- Launches client with configurable delay (default: 30s)
+
+## ✨ Features
+
+- **Session Token Authentication**: Secure, unique tokens for each session
+- **Auto-Discovery**: Followers sync with controller's current state on join
+- **Cross-Platform**: Works on macOS and Windows
+- **Auto-Reconnect**: Clients automatically reconnect if connection drops
+- **Heartbeat System**: Keeps connections alive
+- **Game Process Killer**: Prevents accidental game launches on controller
+- **Flexible Deployment**: Run relay server locally or on VPS
+
+## 📦 Installation
 
 ```bash
 cd league-monitor
 npm install
 ```
 
-## Configuration
+## 🚀 Quick Start
 
-### Controller (Mac)
-Edit `src/controller/index.ts`:
-```typescript
-const config: ControllerConfig = {
-  port: 8080,                 // WebSocket server port
-  monitorInterval: 5000       // Check every 5 seconds
-};
+### 1. Setup Configuration
+
+Copy the example config:
+```bash
+cp config.example.json config.json
 ```
 
-### Client (PC 2)
-Edit `src/client/index.ts`:
-```typescript
-const config: ClientConfig = {
-  serverHost: '192.168.1.100',  // Mac's IP address
-  serverPort: 8080,
-  restartDelay: 30000            // 30 seconds delay
-};
+Edit `config.json` and update the relay server host:
+```json
+{
+  "controller": {
+    "relayServerHost": "your-vps-ip",
+    "relayServerPort": 8080,
+    ...
+  },
+  "follower": {
+    "relayServerHost": "your-vps-ip",
+    "relayServerPort": 8080,
+    ...
+  }
+}
 ```
 
-## Usage
+### 2. Start Relay Server
 
-### On Mac (Controller)
+**On VPS (recommended):**
+```bash
+ssh root@your-vps-ip
+cd /opt/league-monitor
+npm install
+pm2 start npm --name relay-server -- run relay
+```
+
+**Or locally:**
+```bash
+npm run relay
+```
+
+### 3. Start Controller (Mac)
+
+Run:
 ```bash
 npm run controller
 ```
 
-Or for development with auto-reload:
+Copy the session token from output:
+```
+============================================================
+SESSION TOKEN: abc123def456789
+Share this token with follower clients to connect
+============================================================
+```
+
+### 4. Start Follower (Windows)
+
+Run with token:
 ```bash
+npm run follower abc123def456789
+```
+
+## 📋 Configuration
+
+### Relay Server
+- **Port**: 8080 (default)
+- **Host**: 0.0.0.0 (all interfaces)
+
+### Controller
+- **Monitor Interval**: 5000ms (5 seconds)
+- **Auto-restart**: Enabled
+- **Game process kill**: Enabled
+
+### Follower
+- **Restart Delay**: 30000ms (30 seconds)
+- **Auto-sync on join**: Enabled
+
+## 🔧 Commands
+
+```bash
+# Relay server (VPS or local)
+npm run relay
+
+# Controller (Mac - creates session)
+npm run controller
+
+# Follower (Windows - joins session)
+npm run follower <session-token>
+
+# Development mode (auto-reload)
+npm run dev:relay
 npm run dev:controller
+npm run dev:follower
 ```
 
-### On PC 2 (Client)
+## 📖 How It Works
+
+### Initial Connection
+1. Controller connects to relay server
+2. Relay generates unique session token
+3. Controller shares token with follower
+4. Follower joins session using token
+5. Follower requests current status
+6. Controller responds with LeagueClient state
+7. Follower syncs to match controller's state
+
+### Client Restart Flow
+1. LeagueClient closes on controller
+2. Controller auto-restarts LeagueClient
+3. Controller sends restart event to relay
+4. Relay broadcasts to all followers in session
+5. Followers wait configured delay (30s)
+6. Followers launch their LeagueClient
+
+### Status Sync
+- Follower joins → requests status
+- Controller responds with current state
+- If client running → follower starts client
+- If client stopped → follower waits
+
+## 🌐 VPS Deployment
+
+See [VPS-SETUP.md](./VPS-SETUP.md) for detailed deployment guide.
+
+Quick VPS setup:
 ```bash
-npm run client
+# Install Node.js
+curl -fsSL https://deb.nodesource.com/setup_20.x | bash -
+apt-get install -y nodejs
+
+# Install PM2
+npm install -g pm2
+
+# Deploy and start
+cd /opt/league-monitor
+npm install
+pm2 start npm --name relay-server -- run relay
+pm2 save
+pm2 startup
+
+# Open firewall
+ufw allow 8080/tcp
 ```
 
-Or for development:
+## 🔍 Troubleshooting
+
+### "Session token is required"
+Provide token as command argument:
 ```bash
-npm run dev:client
+npm run follower your-token-here
 ```
 
-## Build
+### "Failed to connect to relay server"
+- Check if relay server is running
+- Verify VPS IP address is correct
+- Ensure port 8080 is open on firewall
+- Test with: `curl http://your-vps-ip:8080/health`
 
-```bash
-npm run build
-```
-
-Compiled files will be in `dist/` directory.
-
-## How It Works
-
-1. **Controller starts** and begins monitoring LeagueClient
-2. **Client connects** to controller via WebSocket
-3. **If LeagueClient closes** on controller:
-   - Controller auto-restarts LeagueClient
-   - Controller broadcasts restart event
-   - Client receives event and waits 30 seconds
-   - Client launches its own LeagueClient
-4. **If game starts** on controller:
-   - Controller kills game process immediately
-   - LeagueClient continues running
-
-## Network Requirements
-
-- Both computers must be on the same network
-- Controller's IP address must be accessible from client
-- Port 8080 (or configured port) must be open
-
-## Platform Support
-
-- **Controller**: Designed for macOS (can work on Windows with limitations)
-- **Client**: Works on both Windows and macOS
-
-## Process Names
-
-- **LeagueClient**: The client application
-- **League of Legends**: The actual game (gets killed on controller)
-
-## Troubleshooting
-
-### Client can't connect
-- Check if Mac's IP address is correct
-- Verify firewall settings allow port 8080
-- Ensure both machines are on same network
+### "Session not found"
+- Ensure controller is running
+- Verify token is correct (copy-paste without spaces)
+- Check if session expired (24h timeout)
 
 ### Client not auto-starting
-- Verify League installation path
-- Check RiotClientInstalls.json exists
+- Check League installation path
+- Verify RiotClientInstalls.json exists
 - Ensure sufficient permissions
 
-### Game keeps starting on Mac
-- Check monitor interval (may need to be more frequent)
-- Verify process names match your system
+## 🔒 Security
+
+- Session tokens are randomly generated (32 characters)
+- Sessions auto-expire after 24 hours
+- WebSocket connections only (no HTTP endpoints for sensitive data)
+- No authentication required for relay health check
+
+## 📄 License
+
+MIT
+
+## 🤝 Contributing
+
+Contributions are welcome! Please feel free to submit a Pull Request.
+
+## 📚 Documentation
+
+- [Quick Start Guide](./QUICK-START.md)
+- [VPS Setup Guide](./VPS-SETUP.md)
+- [Troubleshooting Guide](./TROUBLESHOOTING.md)

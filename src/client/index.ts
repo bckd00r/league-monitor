@@ -1,13 +1,12 @@
 import { SessionClient } from '../controller/session-client.js';
 import { LeagueUtils } from '../shared/league-utils.js';
 import { Logger } from '../shared/logger.js';
+import { getFollowerConfig } from '../shared/config.js';
 
 const logger = new Logger('Follower');
 
-// Configuration - change this to your relay server
-const RELAY_SERVER_HOST = '37.59.96.187'; // or remote server IP
-const RELAY_SERVER_PORT = 8080;
-const RESTART_DELAY = 30000; // 30 seconds
+// Load configuration from config.json
+const config = getFollowerConfig();
 
 async function main() {
   // Get token from command line argument
@@ -27,16 +26,20 @@ async function main() {
 
   logger.info('Starting League Client Follower with Session Token...');
   logger.info(`Platform: ${process.platform}`);
-  logger.info(`Restart delay: ${RESTART_DELAY}ms`);
+  logger.info(`Restart delay: ${config.restartDelay}ms`);
   logger.info(`Session token: ${sessionToken}`);
 
   // Initialize session client
-  const sessionClient = new SessionClient(RELAY_SERVER_HOST, RELAY_SERVER_PORT, 'follower');
+  const sessionClient = new SessionClient(
+    config.relayServerHost,
+    config.relayServerPort,
+    'follower'
+  );
 
   sessionClient.setRestartCallback(async () => {
-    logger.info(`Waiting ${RESTART_DELAY}ms before restarting client...`);
+    logger.info(`Waiting ${config.restartDelay}ms before restarting client...`);
     
-    await new Promise(resolve => setTimeout(resolve, RESTART_DELAY));
+    await new Promise(resolve => setTimeout(resolve, config.restartDelay));
     
     logger.info('Starting League Client...');
     const success = await LeagueUtils.launchLeagueClient();
