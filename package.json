@@ -1,0 +1,29 @@
+{
+  "name": "league-client-monitor",
+  "version": "1.0.0",
+  "description": "Multi-PC League of Legends client monitoring and synchronization system",
+  "main": "dist/index.js",
+  "type": "module",
+  "scripts": {
+    "build": "tsc",
+    "relay": "tsx src/relay-server/index.ts",
+    "controller": "tsx src/controller/index.ts",
+    "follower": "tsx src/client/index.ts",
+    "dev:relay": "tsx watch src/relay-server/index.ts",
+    "dev:controller": "tsx watch src/controller/index.ts",
+    "dev:follower": "tsx watch src/client/index.ts"
+  },
+  "keywords": ["league", "monitor", "sync"],
+  "author": "",
+  "license": "MIT",
+  "dependencies": {
+    "ws": "^8.16.0",
+    "yaml": "^2.3.4"
+  },
+  "devDependencies": {
+    "@types/node": "^20.11.0",
+    "@types/ws": "^8.5.10",
+    "tsx": "^4.7.0",
+    "typescript": "^5.3.3"
+  }
+}
