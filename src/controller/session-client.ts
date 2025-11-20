@@ -9,7 +9,7 @@ export class SessionClient {
   private role: 'controller' | 'follower';
   private reconnectInterval: number = 5000;
   private reconnectTimer?: NodeJS.Timeout;
-  private onStatusRequest?: () => Promise<boolean>;
+  private onStatusRequest?: () => Promise<{ clientRunning: boolean; processCount: number }>;
   private onImmediateStart?: () => void;
   private isConnected: boolean = false;
 
@@ -19,7 +19,7 @@ export class SessionClient {
     this.role = role;
   }
 
-  setStatusRequestCallback(callback: () => Promise<boolean>): void {
+  setStatusRequestCallback(callback: () => Promise<{ clientRunning: boolean; processCount: number }>): void {
     this.onStatusRequest = callback;
   }
 
@@ -126,14 +126,18 @@ export class SessionClient {
         } else {
           this.logger.info('Controller client is NOT running');
         }
+        const processCount = message.status?.processCount || 0;
+        if (processCount > 0) {
+          this.logger.info(`Controller process count: ${processCount}`);
+        }
         // Status update sadece bilgi amaçlı, başlatma yapılmıyor
         break;
 
       case 'STATUS_REQUEST':
         this.logger.info('Controller status requested');
         if (this.onStatusRequest) {
-          this.onStatusRequest().then(isRunning => {
-            this.sendStatus(isRunning);
+          this.onStatusRequest().then(status => {
+            this.sendStatus(status.clientRunning, status.processCount);
           });
         }
         break;
@@ -162,7 +166,7 @@ export class SessionClient {
     });
   }
 
-  sendStatus(clientRunning: boolean): void {
+  sendStatus(clientRunning: boolean, processCount: number = 0): void {
     if (!this.isConnected) {
       this.logger.warn('Not connected, cannot send status');
       return;
@@ -170,7 +174,7 @@ export class SessionClient {
 
     this.send({
       type: 'STATUS_UPDATE',
-      status: { clientRunning }
+      status: { clientRunning, processCount }
     });
   }
 

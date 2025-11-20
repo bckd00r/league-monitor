@@ -38,8 +38,19 @@ async function main() {
     const { LeagueUtils } = await import('../shared/league-utils.js');
     const processName = LeagueUtils.getLeagueClientProcessName();
     const isRunning = await ProcessUtils.isProcessRunning(processName);
-    logger.info(`Status check: LeagueClient is ${isRunning ? 'RUNNING' : 'NOT RUNNING'}`);
-    return isRunning;
+    
+    // Get League of Legends process count (Windows only)
+    let processCount = 0;
+    if (process.platform === 'win32') {
+      try {
+        processCount = await ProcessUtils.getProcessCountByDescription('League of Legends');
+      } catch (error) {
+        // Silently fail
+      }
+    }
+    
+    logger.info(`Status check: LeagueClient is ${isRunning ? 'RUNNING' : 'NOT RUNNING'}, Process count: ${processCount}`);
+    return { clientRunning: isRunning, processCount };
   });
 
   // Connect to relay server

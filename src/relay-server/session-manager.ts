@@ -166,7 +166,7 @@ export class SessionManager {
   /**
    * Broadcast status from controller to all followers
    */
-  broadcastStatus(controllerClientId: string, status: { clientRunning: boolean }): number {
+  broadcastStatus(controllerClientId: string, status: { clientRunning: boolean; processCount: number }): number {
     const token = this.clientToSession.get(controllerClientId);
     if (!token) return 0;
 
