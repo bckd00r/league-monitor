@@ -59,17 +59,25 @@ async function main() {
     }
   });
 
-  // Connect with token
+  // Connect with token (or auto-join by IP)
   await sessionClient.connect(sessionToken);
 
   // Wait for connection
   await new Promise(resolve => setTimeout(resolve, 2000));
 
-  // Request initial status from controller
-  if (sessionClient.connected()) {
-    logger.info('Requesting initial status from controller...');
-    sessionClient.requestStatus();
-  }
+  // Request initial status from controller (only if we have a session token)
+  // If auto-joining, wait for successful join first
+  const checkAndRequestStatus = () => {
+    if (sessionClient.connected() && sessionClient.getSessionToken()) {
+      logger.info('Requesting initial status from controller...');
+      sessionClient.requestStatus();
+    } else if (!sessionToken) {
+      // If no token and no session yet, wait a bit more and retry
+      setTimeout(checkAndRequestStatus, 3000);
+    }
+  };
+  
+  checkAndRequestStatus();
 
   // Send heartbeat every 30 seconds
   setInterval(() => {

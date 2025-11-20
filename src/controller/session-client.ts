@@ -12,6 +12,8 @@ export class SessionClient {
   private onStatusRequest?: () => Promise<{ clientRunning: boolean; processCount: number }>;
   private onImmediateStart?: () => void;
   private isConnected: boolean = false;
+  private autoJoinRetryTimer?: NodeJS.Timeout;
+  private autoJoinRetryInterval: number = 5000; // 5 seconds
 
   constructor(serverHost: string, serverPort: number, role: 'controller' | 'follower') {
     this.logger = new Logger(`SessionClient-${role}`);
@@ -107,6 +109,13 @@ export class SessionClient {
 
       case 'JOINED':
         this.sessionToken = message.sessionToken;
+        
+        // Stop auto-join retry if successful
+        if (this.autoJoinRetryTimer) {
+          clearInterval(this.autoJoinRetryTimer);
+          this.autoJoinRetryTimer = undefined;
+        }
+        
         this.logger.success(`Joined session as ${message.role}`);
         if (message.autoJoined) {
           this.logger.success('Auto-joined session by IP address (same IP as controller)');
@@ -158,6 +167,14 @@ export class SessionClient {
 
       case 'ERROR':
         this.logger.error(`Server error: ${message.message}`);
+        
+        // If auto-join failed (no session found), retry periodically
+        if (this.role === 'follower' && 
+            !this.sessionToken && 
+            message.message?.includes('No session found')) {
+          this.logger.info('Controller not found yet, will retry auto-join in 5 seconds...');
+          this.scheduleAutoJoinRetry();
+        }
         break;
 
       default:
@@ -220,9 +237,34 @@ export class SessionClient {
     }, this.reconnectInterval);
   }
 
+  private scheduleAutoJoinRetry(): void {
+    // Clear existing timer
+    if (this.autoJoinRetryTimer) {
+      clearInterval(this.autoJoinRetryTimer);
+    }
+
+    // Retry auto-join every 5 seconds
+    this.autoJoinRetryTimer = setInterval(() => {
+      if (this.isConnected && !this.sessionToken && this.role === 'follower') {
+        this.logger.info('Retrying auto-join by IP...');
+        this.joinSession(); // No token, server will auto-match by IP
+      } else {
+        // Stop retrying if connected with token or not a follower
+        if (this.autoJoinRetryTimer) {
+          clearInterval(this.autoJoinRetryTimer);
+          this.autoJoinRetryTimer = undefined;
+        }
+      }
+    }, this.autoJoinRetryInterval);
+  }
+
   disconnect(): void {
     if (this.reconnectTimer) {
       clearTimeout(this.reconnectTimer);
+    }
+    if (this.autoJoinRetryTimer) {
+      clearInterval(this.autoJoinRetryTimer);
+      this.autoJoinRetryTimer = undefined;
     }
     if (this.ws) {
       this.ws.close();
