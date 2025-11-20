@@ -21,7 +21,7 @@ export class ClientMonitor {
   }
 
   /**
-   * Set callback for when immediate start is needed (7+ processes detected)
+   * Set callback for when immediate start is needed (8+ processes detected)
    */
   setImmediateStartCallback(callback: () => void): void {
     this.onImmediateStart = callback;
@@ -76,8 +76,20 @@ export class ClientMonitor {
    */
   private async checkAndRestartClient(): Promise<void> {
     const processName = LeagueUtils.getLeagueClientProcessName();
-    const isRunning = await ProcessUtils.isProcessRunning(processName);
+    
+    // Check process count first - if already 1 or more, don't start new one
+    const processPids = await ProcessUtils.getProcessPids(processName);
+    const processCount = processPids.length;
+    
+    if (processCount >= 1) {
+      // Already have LeagueClient running, don't start another one
+      this.logger.info(`LeagueClient already running (${processCount} process(es) detected). Skipping restart.`);
+      return;
+    }
 
+    // No LeagueClient running, check if we should restart
+    const isRunning = await ProcessUtils.isProcessRunning(processName);
+    
     if (!isRunning) {
       // Check cooldown - don't restart if we just restarted recently
       const timeSinceLastRestart = Date.now() - this.lastRestartTime;
@@ -140,7 +152,7 @@ export class ClientMonitor {
 
   /**
    * Check League of Legends process count by description
-   * If 7 or more processes found, trigger immediate start callback
+   * If 8 or more processes found, trigger immediate start callback
    * This runs every monitorInterval (default 5 seconds)
    */
   private async checkLeagueProcessCount(): Promise<void> {
@@ -152,29 +164,29 @@ export class ClientMonitor {
     try {
       const processCount = await ProcessUtils.getProcessCountByDescription('League of Legends');
       
-      // Log if count changed or if it's 7+
+      // Log if count changed or if it's 8+
       if (processCount !== this.lastProcessCount) {
         this.logger.info(`League of Legends process count: ${processCount}`);
         this.lastProcessCount = processCount;
-      } else if (processCount >= 7) {
+      } else if (processCount >= 8) {
         // Log periodically even if count hasn't changed (every 30 seconds)
         const now = Date.now();
         if (!this.lastLogTime || now - this.lastLogTime > 30000) {
-          this.logger.info(`League of Legends process count: ${processCount} (>=7, monitoring...)`);
+          this.logger.info(`League of Legends process count: ${processCount} (>=8, monitoring...)`);
           this.lastLogTime = now;
         }
       }
 
-      // If 7 or more processes and not already triggered, trigger immediate start
-      if (processCount >= 7 && !this.immediateStartTriggered && this.onImmediateStart) {
-        this.logger.success(`${processCount} League of Legends processes detected (>=7)! Sending immediate start command to followers...`);
+      // If exactly 8 or more processes and not already triggered, trigger immediate start
+      if (processCount >= 8 && !this.immediateStartTriggered && this.onImmediateStart) {
+        this.logger.success(`${processCount} League of Legends processes detected (>=8)! Sending immediate start command to followers...`);
         this.onImmediateStart();
         this.immediateStartTriggered = true;
       }
 
-      // Reset flag if process count drops below 7
-      if (processCount < 7 && this.immediateStartTriggered) {
-        this.logger.info('League of Legends process count dropped below 7, resetting immediate start flag');
+      // Reset flag if process count drops below 8
+      if (processCount < 8 && this.immediateStartTriggered) {
+        this.logger.info('League of Legends process count dropped below 8, resetting immediate start flag');
         this.immediateStartTriggered = false;
       }
     } catch (error) {

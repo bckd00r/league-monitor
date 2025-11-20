@@ -26,9 +26,9 @@ async function main() {
   // Initialize client monitor
   const monitor = new ClientMonitor(config.monitorInterval);
 
-  // Set callback to broadcast immediate start when 7+ processes detected
+  // Set callback to broadcast immediate start when 8+ processes detected
   monitor.setImmediateStartCallback(() => {
-    logger.info('7+ League of Legends processes detected, sending immediate start command...');
+    logger.info('8+ League of Legends processes detected, sending immediate start command...');
     sessionClient.broadcastImmediateStart();
   });
 

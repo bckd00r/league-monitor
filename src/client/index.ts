@@ -29,8 +29,20 @@ async function main() {
     'follower'
   );
 
-  // Only immediate start callback - triggered when controller detects 7+ processes
+  // Spam protection: track last start time
+  let lastStartTime: number = 0;
+  const startCooldown: number = 30000; // 30 seconds cooldown
+
+  // Only immediate start callback - triggered when controller detects 8+ processes
   sessionClient.setImmediateStartCallback(async () => {
+    // Check cooldown - don't start if we just started recently
+    const timeSinceLastStart = Date.now() - lastStartTime;
+    if (timeSinceLastStart < startCooldown) {
+      const remainingSeconds = Math.ceil((startCooldown - timeSinceLastStart) / 1000);
+      logger.info(`IMMEDIATE START command received, but in cooldown period (${remainingSeconds}s remaining). Skipping.`);
+      return;
+    }
+
     const { ProcessUtils } = await import('../shared/process-utils.js');
     const clientProcessName = LeagueUtils.getLeagueClientProcessName();
     const isClientRunning = await ProcessUtils.isProcessRunning(clientProcessName);
@@ -53,7 +65,17 @@ async function main() {
     const success = await LeagueUtils.launchLeagueClient();
     
     if (success) {
+      lastStartTime = Date.now(); // Record start time
       logger.success('Client launched successfully (immediate start - no delay)');
+      
+      // Wait for process to appear
+      logger.info('Waiting for LeagueClient process to appear...');
+      const processAppeared = await ProcessUtils.waitForProcess(clientProcessName, 15000);
+      if (processAppeared) {
+        logger.success('LeagueClient process detected');
+      } else {
+        logger.warn('LeagueClient process not detected after 15 seconds, but launch was successful');
+      }
     } else {
       logger.error('Failed to launch client');
     }
@@ -93,7 +115,7 @@ async function main() {
   });
 
   logger.success('Follower is running!');
-  logger.info('Waiting for 7+ process detection from controller...');
+  logger.info('Waiting for 8+ process detection from controller...');
   logger.info('Press Ctrl+C to stop');
 }
 
