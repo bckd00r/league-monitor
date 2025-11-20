@@ -148,6 +148,7 @@ export class ProcessUtils {
       if (platform === 'win32') {
         // For "League of Legends", use process name patterns (most reliable method)
         if (description === 'League of Legends' || description.toLowerCase().includes('league')) {
+          // Method A: Use getProcessPids (most reliable)
           try {
             const leagueProcessNames = ['LeagueClient', 'LeagueClientUx', 'LeagueClientUxRender'];
             let totalCount = 0;
@@ -166,6 +167,106 @@ export class ProcessUtils {
             }
           } catch (error) {
             logger.warn(`Process name pattern method failed: ${error instanceof Error ? error.message : 'Unknown error'}`);
+          }
+
+          // Method B: Use tasklist for each process separately (most reliable, works on all Windows)
+          try {
+            const leagueProcessNames = ['LeagueClient.exe', 'LeagueClientUx.exe', 'LeagueClientUxRender.exe'];
+            let totalCount = 0;
+            
+            for (const procName of leagueProcessNames) {
+              try {
+                const { stdout } = await execAsync(`tasklist /FI "IMAGENAME eq ${procName}" /FO CSV /NH`);
+                
+                // Parse CSV output - count non-empty lines (excluding header)
+                const lines = stdout.trim().split('\n').filter(line => {
+                  const trimmed = line.trim();
+                  // CSV format: "ProcessName","PID","SessionName","Session#","MemUsage"
+                  // Check if line contains the process name and has content
+                  return trimmed.length > 0 && 
+                         trimmed.includes(`"${procName.replace('.exe', '')}"`) &&
+                         trimmed.includes('"');
+                });
+                
+                totalCount += lines.length;
+                if (lines.length > 0) {
+                  logger.info(`Found ${lines.length} ${procName} process(es) via tasklist`);
+                }
+              } catch (error) {
+                // Try alternative tasklist format if CSV fails
+                try {
+                  const { stdout } = await execAsync(`tasklist /FI "IMAGENAME eq ${procName}" /NH`);
+                  const lines = stdout.split('\n').filter(line => {
+                    const upperLine = line.toUpperCase().trim();
+                    // Check if line contains process name (case-insensitive)
+                    return upperLine.length > 0 && 
+                           upperLine.includes(procName.toUpperCase().replace('.EXE', ''));
+                  });
+                  totalCount += lines.length;
+                  if (lines.length > 0) {
+                    logger.info(`Found ${lines.length} ${procName} process(es) via tasklist (format 2)`);
+                  }
+                } catch (error2) {
+                  // Skip this process if both formats fail
+                  logger.warn(`Failed to count ${procName}: ${error2 instanceof Error ? error2.message : 'Unknown'}`);
+                }
+              }
+            }
+            
+            if (totalCount > 0) {
+              logger.info(`Total League process count: ${totalCount} (by tasklist)`);
+              return totalCount;
+            }
+          } catch (error) {
+            logger.warn(`Tasklist method failed: ${error instanceof Error ? error.message : 'Unknown error'}`);
+          }
+
+          // Method C: Try PowerShell Get-Process (Windows 10+, alternative)
+          try {
+            const { stdout } = await execAsync(
+              `powershell -Command "Get-Process | Where-Object {$_.ProcessName -like 'LeagueClient*'} | Measure-Object | Select-Object -ExpandProperty Count"`
+            );
+            const count = parseInt(stdout.trim());
+            if (!isNaN(count) && count > 0) {
+              logger.info(`Total League process count: ${count} (by PowerShell Get-Process)`);
+              return count;
+            }
+          } catch (error) {
+            // PowerShell might not be available on older Windows
+          }
+
+          // Method D: Simple tasklist all processes and filter (most compatible)
+          try {
+            const { stdout } = await execAsync('tasklist /FO LIST');
+            
+            // Count processes that match League process names
+            const lines = stdout.split('\n');
+            let count = 0;
+            let currentProcess = '';
+            
+            for (const line of lines) {
+              if (line.includes('Image Name:')) {
+                const match = line.match(/Image Name:\s*(.+)/i);
+                if (match) {
+                  currentProcess = match[1].trim().toLowerCase();
+                }
+              } else if (line.includes('PID:')) {
+                // If we're tracking a League process, count it
+                if (currentProcess === 'leagueclient.exe' || 
+                    currentProcess === 'leagueclientux.exe' || 
+                    currentProcess === 'leagueclientuxrender.exe') {
+                  count++;
+                  currentProcess = ''; // Reset to avoid double counting
+                }
+              }
+            }
+            
+            if (count > 0) {
+              logger.info(`Total League process count: ${count} (by tasklist /FO LIST)`);
+              return count;
+            }
+          } catch (error) {
+            logger.warn(`Tasklist LIST method failed: ${error instanceof Error ? error.message : 'Unknown error'}`);
           }
         }
 
