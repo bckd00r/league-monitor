@@ -11,7 +11,7 @@ interface ClientMessage {
   type: 'JOIN' | 'HEARTBEAT' | 'RESTART' | 'CREATE_SESSION' | 'STATUS_UPDATE' | 'STATUS_REQUEST' | 'IMMEDIATE_START';
   sessionToken?: string;
   role?: 'controller' | 'follower';
-  status?: { clientRunning: boolean };
+  status?: { clientRunning: boolean; processCount?: number };
 }
 
 class RelayServer {
@@ -147,7 +147,12 @@ class RelayServer {
           this.send(ws, { type: 'ERROR', message: 'Missing status' });
           return;
         }
-        const statusSent = this.sessionManager.broadcastStatus(clientId, message.status);
+        // Ensure processCount is included (default to 0 if not provided)
+        const statusWithCount = {
+          clientRunning: message.status.clientRunning || false,
+          processCount: message.status.processCount || 0
+        };
+        const statusSent = this.sessionManager.broadcastStatus(clientId, statusWithCount);
         this.send(ws, {
           type: 'STATUS_BROADCASTED',
           sentTo: statusSent
