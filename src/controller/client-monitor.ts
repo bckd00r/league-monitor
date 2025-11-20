@@ -113,16 +113,10 @@ export class ClientMonitor {
         
         if (processAppeared) {
           this.logger.success('LeagueClient process detected');
-          // Notify that client was started
-          if (this.onClientStarted) {
-            this.onClientStarted();
-          }
+          // No callback - we only notify followers when 8+ processes are detected
         } else {
           this.logger.warn('LeagueClient process not detected after 15 seconds, but launch was successful');
-          // Still notify even if process not detected (launch was successful)
-          if (this.onClientStarted) {
-            this.onClientStarted();
-          }
+          // No callback - we only notify followers when 8+ processes are detected
         }
       } else {
         this.logger.error('Failed to restart LeagueClient');

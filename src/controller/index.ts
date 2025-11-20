@@ -32,11 +32,7 @@ async function main() {
     sessionClient.broadcastImmediateStart();
   });
 
-  // Set callback to broadcast when client is started
-  monitor.setClientStartedCallback(() => {
-    logger.info('LeagueClient started on controller, sending start command to followers...');
-    sessionClient.broadcastImmediateStart();
-  });
+  // Note: No onClientStarted callback - we only send commands when 8+ processes are detected
 
   // Set callback for status requests
   sessionClient.setStatusRequestCallback(async () => {
