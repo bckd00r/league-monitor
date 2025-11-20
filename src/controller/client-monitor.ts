@@ -10,6 +10,8 @@ export class ClientMonitor {
   private onImmediateStart?: () => void;
   private lastProcessCount: number = 0;
   private immediateStartTriggered: boolean = false;
+  private lastRestartTime: number = 0;
+  private readonly restartCooldown: number = 30000; // 30 seconds cooldown
 
   constructor(monitorInterval: number = 5000) {
     this.logger = new Logger('ClientMonitor');
@@ -68,15 +70,31 @@ export class ClientMonitor {
     const isRunning = await ProcessUtils.isProcessRunning(processName);
 
     if (!isRunning) {
+      // Check cooldown - don't restart if we just restarted recently
+      const timeSinceLastRestart = Date.now() - this.lastRestartTime;
+      if (timeSinceLastRestart < this.restartCooldown) {
+        const remainingSeconds = Math.ceil((this.restartCooldown - timeSinceLastRestart) / 1000);
+        this.logger.info(`LeagueClient not running, but in cooldown period (${remainingSeconds}s remaining). Skipping restart.`);
+        return;
+      }
+
       this.logger.warn('LeagueClient is not running, restarting...');
       
       const success = await LeagueUtils.launchLeagueClient();
       
       if (success) {
+        this.lastRestartTime = Date.now();
         this.logger.success('LeagueClient restarted successfully');
         
-        // Wait a bit to ensure process started
-        await new Promise(resolve => setTimeout(resolve, 2000));
+        // Wait for process to actually appear (up to 15 seconds)
+        this.logger.info('Waiting for LeagueClient process to appear...');
+        const processAppeared = await ProcessUtils.waitForProcess(processName, 15000);
+        
+        if (processAppeared) {
+          this.logger.success('LeagueClient process detected');
+        } else {
+          this.logger.warn('LeagueClient process not detected after 15 seconds, but launch was successful');
+        }
       } else {
         this.logger.error('Failed to restart LeagueClient');
       }
