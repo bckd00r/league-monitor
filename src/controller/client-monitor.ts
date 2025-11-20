@@ -158,29 +158,40 @@ export class ClientMonitor {
     try {
       const processCount = await ProcessUtils.getProcessCountByDescription('League of Legends');
       
-      // Log if count changed or if it's 8+
+      // Always log process count for debugging (especially when >= 8)
       if (processCount !== this.lastProcessCount) {
         this.logger.info(`League of Legends process count: ${processCount}`);
         this.lastProcessCount = processCount;
       } else if (processCount >= 8) {
-        // Log periodically even if count hasn't changed (every 30 seconds)
+        // Log every check when >= 8 (for debugging)
+        this.logger.info(`League of Legends process count: ${processCount} (>=8, checking trigger...)`);
+      } else {
+        // Log occasionally for lower counts
         const now = Date.now();
         if (!this.lastLogTime || now - this.lastLogTime > 30000) {
-          this.logger.info(`League of Legends process count: ${processCount} (>=8, monitoring...)`);
+          this.logger.info(`League of Legends process count: ${processCount}`);
           this.lastLogTime = now;
         }
       }
 
       // If exactly 8 or more processes and not already triggered, trigger immediate start
-      if (processCount >= 8 && !this.immediateStartTriggered && this.onImmediateStart) {
-        this.logger.success(`${processCount} League of Legends processes detected (>=8)! Sending immediate start command to followers...`);
-        this.onImmediateStart();
-        this.immediateStartTriggered = true;
+      if (processCount >= 8) {
+        if (!this.immediateStartTriggered) {
+          this.logger.success(`${processCount} League of Legends processes detected (>=8)! Sending immediate start command to followers...`);
+          if (this.onImmediateStart) {
+            this.onImmediateStart();
+            this.immediateStartTriggered = true;
+          } else {
+            this.logger.warn('Process count >= 8 but onImmediateStart callback is not set!');
+          }
+        } else {
+          this.logger.info(`Process count is ${processCount} (>=8) but already triggered (flag: ${this.immediateStartTriggered})`);
+        }
       }
 
       // Reset flag if process count drops below 8
       if (processCount < 8 && this.immediateStartTriggered) {
-        this.logger.info('League of Legends process count dropped below 8, resetting immediate start flag');
+        this.logger.info(`League of Legends process count dropped to ${processCount} (below 8), resetting immediate start flag`);
         this.immediateStartTriggered = false;
       }
     } catch (error) {

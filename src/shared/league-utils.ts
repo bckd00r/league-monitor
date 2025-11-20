@@ -89,21 +89,35 @@ export class LeagueUtils {
         const installsPath = join(appData, 'Riot Games', 'RiotClientInstalls.json');
 
         if (existsSync(installsPath)) {
-          const content = await readFile(installsPath, 'utf-8');
-          const data = JSON.parse(content);
-          
-          // Try different paths
-          const paths = [
-            data.rc_default,
-            data.rc_live,
-            data.rc_beta
-          ];
-
-          for (const path of paths) {
-            if (path && existsSync(path)) {
-              logger.info(`Found Riot Client: ${path}`);
-              return path;
+          try {
+            const content = await readFile(installsPath, 'utf-8');
+            // Clean content: remove BOM, trim whitespace, and handle trailing commas
+            const cleanedContent = content.trim().replace(/^\uFEFF/, '').replace(/,\s*}/g, '}').replace(/,\s*]/g, ']');
+            
+            // Try to find valid JSON (in case there are comments or extra content)
+            const jsonMatch = cleanedContent.match(/\{[\s\S]*\}/);
+            if (!jsonMatch) {
+              throw new Error('No valid JSON found in file');
             }
+            
+            const data = JSON.parse(jsonMatch[0]);
+            
+            // Try different paths
+            const paths = [
+              data.rc_default,
+              data.rc_live,
+              data.rc_beta
+            ];
+
+            for (const path of paths) {
+              if (path && existsSync(path)) {
+                logger.info(`Found Riot Client: ${path}`);
+                return path;
+              }
+            }
+          } catch (parseError) {
+            logger.warn(`Failed to parse RiotClientInstalls.json: ${parseError instanceof Error ? parseError.message : 'Unknown error'}`);
+            // Continue to fallback path
           }
         }
 

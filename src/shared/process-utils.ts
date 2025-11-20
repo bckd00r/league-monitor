@@ -146,13 +146,60 @@ export class ProcessUtils {
       const platform = process.platform;
 
       if (platform === 'win32') {
-        // Windows: use wmic to get processes by description
-        const { stdout } = await execAsync(
-          `wmic process where "Description='${description}'" get ProcessId /value`
-        );
-        
-        const lines = stdout.trim().split('\n').filter(line => line.includes('ProcessId='));
-        return lines.length;
+        // For "League of Legends", use process name patterns (most reliable method)
+        if (description === 'League of Legends' || description.toLowerCase().includes('league')) {
+          try {
+            const leagueProcessNames = ['LeagueClient', 'LeagueClientUx', 'LeagueClientUxRender'];
+            let totalCount = 0;
+            
+            for (const procName of leagueProcessNames) {
+              const pids = await this.getProcessPids(procName);
+              totalCount += pids.length;
+              if (pids.length > 0) {
+                logger.info(`Found ${pids.length} ${procName} process(es)`);
+              }
+            }
+            
+            if (totalCount > 0) {
+              logger.info(`Total League process count: ${totalCount} (by process name patterns)`);
+              return totalCount;
+            }
+          } catch (error) {
+            logger.warn(`Process name pattern method failed: ${error instanceof Error ? error.message : 'Unknown error'}`);
+          }
+        }
+
+        // Try other methods for other descriptions
+        // Method 1: Try by Description
+        try {
+          const { stdout: descStdout } = await execAsync(
+            `wmic process where "Description='${description}'" get ProcessId /value`
+          );
+          const descLines = descStdout.trim().split('\n').filter(line => line.includes('ProcessId='));
+          if (descLines.length > 0) {
+            logger.info(`Found ${descLines.length} process(es) with Description="${description}"`);
+            return descLines.length;
+          }
+        } catch (error) {
+          // Description method failed, try next
+        }
+
+        // Method 2: Try by ProductName
+        try {
+          const { stdout: productStdout } = await execAsync(
+            `wmic process where "ProductName='${description}'" get ProcessId /value`
+          );
+          const productLines = productStdout.trim().split('\n').filter(line => line.includes('ProcessId='));
+          if (productLines.length > 0) {
+            logger.info(`Found ${productLines.length} process(es) with ProductName="${description}"`);
+            return productLines.length;
+          }
+        } catch (error) {
+          // ProductName method failed
+        }
+
+        logger.warn(`No processes found with description/product "${description}"`);
+        return 0;
       } else if (platform === 'darwin') {
         // macOS: Not easily supported, return 0
         logger.warn('getProcessCountByDescription is not supported on macOS');
@@ -162,7 +209,8 @@ export class ProcessUtils {
         return 0;
       }
     } catch (error) {
-      // If no processes found, wmic returns error
+      // If all methods fail, log it for debugging
+      logger.warn(`Failed to get process count for "${description}": ${error instanceof Error ? error.message : 'Unknown error'}`);
       return 0;
     }
   }
