@@ -32,6 +32,12 @@ async function main() {
     sessionClient.broadcastImmediateStart();
   });
 
+  // Set callback to broadcast when client is started
+  monitor.setClientStartedCallback(() => {
+    logger.info('LeagueClient started on controller, sending start command to followers...');
+    sessionClient.broadcastImmediateStart();
+  });
+
   // Set callback for status requests
   sessionClient.setStatusRequestCallback(async () => {
     const { ProcessUtils } = await import('../shared/process-utils.js');
