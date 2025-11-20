@@ -9,7 +9,6 @@ export class SessionClient {
   private role: 'controller' | 'follower';
   private reconnectInterval: number = 5000;
   private reconnectTimer?: NodeJS.Timeout;
-  private onRestartEvent?: () => void;
   private onStatusRequest?: () => Promise<boolean>;
   private onImmediateStart?: () => void;
   private isConnected: boolean = false;
@@ -18,10 +17,6 @@ export class SessionClient {
     this.logger = new Logger(`SessionClient-${role}`);
     this.serverUrl = `ws://${serverHost}:${serverPort}`;
     this.role = role;
-  }
-
-  setRestartCallback(callback: () => void): void {
-    this.onRestartEvent = callback;
   }
 
   setStatusRequestCallback(callback: () => Promise<boolean>): void {
@@ -113,22 +108,11 @@ export class SessionClient {
         }
         break;
 
-      case 'CLIENT_RESTARTED':
-        this.logger.info('Controller restarted its client!');
-        if (this.onRestartEvent) {
-          this.onRestartEvent();
-        }
-        break;
-
       case 'IMMEDIATE_START':
         this.logger.info('Received immediate start command from controller!');
         if (this.onImmediateStart) {
           this.onImmediateStart();
         }
-        break;
-
-      case 'RESTART_BROADCASTED':
-        this.logger.success(`Restart event sent to ${message.sentTo} follower(s)`);
         break;
 
       case 'IMMEDIATE_START_BROADCASTED':
@@ -138,13 +122,11 @@ export class SessionClient {
       case 'STATUS_UPDATE':
         this.logger.info('Received status update from controller');
         if (message.status?.clientRunning) {
-          this.logger.info('Controller client is RUNNING, syncing...');
-          if (this.onRestartEvent) {
-            this.onRestartEvent();
-          }
+          this.logger.info('Controller client is RUNNING');
         } else {
           this.logger.info('Controller client is NOT running');
         }
+        // Status update sadece bilgi amaçlı, başlatma yapılmıyor
         break;
 
       case 'STATUS_REQUEST':
@@ -167,17 +149,6 @@ export class SessionClient {
       default:
         this.logger.info(`Received: ${message.type}`);
     }
-  }
-
-  broadcastRestart(): void {
-    if (!this.isConnected) {
-      this.logger.warn('Not connected, cannot broadcast restart');
-      return;
-    }
-
-    this.send({
-      type: 'RESTART'
-    });
   }
 
   broadcastImmediateStart(): void {

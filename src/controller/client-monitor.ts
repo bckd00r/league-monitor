@@ -7,9 +7,9 @@ export class ClientMonitor {
   private monitorInterval: number;
   private isMonitoring: boolean = false;
   private monitorTimer?: NodeJS.Timeout;
-  private onClientRestarted?: () => void;
   private onImmediateStart?: () => void;
   private lastProcessCount: number = 0;
+  private immediateStartTriggered: boolean = false;
 
   constructor(monitorInterval: number = 5000) {
     this.logger = new Logger('ClientMonitor');
@@ -17,14 +17,7 @@ export class ClientMonitor {
   }
 
   /**
-   * Set callback for when client is restarted
-   */
-  setRestartCallback(callback: () => void): void {
-    this.onClientRestarted = callback;
-  }
-
-  /**
-   * Set callback for when immediate start is needed (7 processes detected)
+   * Set callback for when immediate start is needed (7+ processes detected)
    */
   setImmediateStartCallback(callback: () => void): void {
     this.onImmediateStart = callback;
@@ -84,11 +77,6 @@ export class ClientMonitor {
         
         // Wait a bit to ensure process started
         await new Promise(resolve => setTimeout(resolve, 2000));
-        
-        // Notify that client was restarted
-        if (this.onClientRestarted) {
-          this.onClientRestarted();
-        }
       } else {
         this.logger.error('Failed to restart LeagueClient');
       }
@@ -117,7 +105,7 @@ export class ClientMonitor {
 
   /**
    * Check League of Legends process count by description
-   * If 7 processes found, trigger immediate start callback
+   * If 7 or more processes found, trigger immediate start callback
    */
   private async checkLeagueProcessCount(): Promise<void> {
     // Only check on Windows
@@ -134,10 +122,17 @@ export class ClientMonitor {
         this.lastProcessCount = processCount;
       }
 
-      // If exactly 7 processes, trigger immediate start
-      if (processCount === 7 && this.onImmediateStart) {
-        this.logger.success('7 League of Legends processes detected! Sending immediate start command to followers...');
+      // If 7 or more processes and not already triggered, trigger immediate start
+      if (processCount >= 7 && !this.immediateStartTriggered && this.onImmediateStart) {
+        this.logger.success(`${processCount} League of Legends processes detected (>=7)! Sending immediate start command to followers...`);
         this.onImmediateStart();
+        this.immediateStartTriggered = true;
+      }
+
+      // Reset flag if process count drops below 7
+      if (processCount < 7 && this.immediateStartTriggered) {
+        this.logger.info('League of Legends process count dropped below 7, resetting immediate start flag');
+        this.immediateStartTriggered = false;
       }
     } catch (error) {
       // Silently fail - process count check is not critical

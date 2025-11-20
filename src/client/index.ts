@@ -26,7 +26,6 @@ async function main() {
 
   logger.info('Starting League Client Follower with Session Token...');
   logger.info(`Platform: ${process.platform}`);
-  logger.info(`Restart delay: ${config.restartDelay}ms`);
   logger.info(`Session token: ${sessionToken}`);
 
   // Initialize session client
@@ -36,48 +35,7 @@ async function main() {
     'follower'
   );
 
-  sessionClient.setRestartCallback(async () => {
-    const { ProcessUtils } = await import('../shared/process-utils.js');
-    const clientProcessName = LeagueUtils.getLeagueClientProcessName();
-    const isClientRunning = await ProcessUtils.isProcessRunning(clientProcessName);
-    
-    if (isClientRunning) {
-      // Client already running - kill and restart immediately
-      logger.info('LeagueClient is already running, restarting immediately...');
-      
-      const killedCount = await ProcessUtils.killProcessByName(clientProcessName);
-      if (killedCount > 0) {
-        logger.success('Killed existing LeagueClient');
-        // Wait a moment for process to fully terminate
-        await new Promise(resolve => setTimeout(resolve, 2000));
-      }
-      
-      logger.info('Launching LeagueClient immediately...');
-      const success = await LeagueUtils.launchLeagueClient();
-      
-      if (success) {
-        logger.success('Client launched successfully (immediate restart)');
-      } else {
-        logger.error('Failed to launch client');
-      }
-    } else {
-      // Client not running - wait delay then start
-      logger.info(`LeagueClient not running, waiting ${config.restartDelay}ms before starting...`);
-      
-      await new Promise(resolve => setTimeout(resolve, config.restartDelay));
-      
-      logger.info('Starting League Client...');
-      const success = await LeagueUtils.launchLeagueClient();
-      
-      if (success) {
-        logger.success('Client launched successfully (delayed start)');
-      } else {
-        logger.error('Failed to launch client');
-      }
-    }
-  });
-
-  // Immediate start callback - no delay, start immediately
+  // Only immediate start callback - triggered when controller detects 7+ processes
   sessionClient.setImmediateStartCallback(async () => {
     const { ProcessUtils } = await import('../shared/process-utils.js');
     const clientProcessName = LeagueUtils.getLeagueClientProcessName();
@@ -133,7 +91,7 @@ async function main() {
   });
 
   logger.success('Follower is running!');
-  logger.info('Waiting for controller restart events...');
+  logger.info('Waiting for 7+ process detection from controller...');
   logger.info('Press Ctrl+C to stop');
 }
 
