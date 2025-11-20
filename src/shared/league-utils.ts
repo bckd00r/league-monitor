@@ -164,8 +164,7 @@ export class LeagueUtils {
     // Default args for launching League
     const defaultArgs = [
       '--launch-product=league_of_legends',
-      '--launch-patchline=live',
-      '--allow-multiple-clients'
+      '--launch-patchline=live'
     ];
 
     const allArgs = [...defaultArgs, ...args];
