@@ -349,6 +349,7 @@ export class SessionManager {
 
   /**
    * Remove IP mapping when client disconnects
+   * Keep IP mapping if session still exists (for reconnect)
    */
   removeIpMapping(clientId: string): void {
     const ip = this.clientToIp.get(clientId);
@@ -356,10 +357,13 @@ export class SessionManager {
       const token = this.ipToSession.get(ip);
       const session = token ? this.sessions.get(token) : null;
       
-      // Only remove IP mapping if no clients left in session
+      // Only remove IP mapping if session is completely empty
       if (session && !session.controller && session.followers.size === 0) {
         this.ipToSession.delete(ip);
-        this.logger.info(`Removed IP mapping for ${ip}`);
+        this.logger.info(`Removed IP mapping for ${ip} (session empty)`);
+      } else if (session) {
+        // Session still has clients, keep IP mapping for reconnect
+        this.logger.info(`Keeping IP mapping for ${ip} (session has other clients or will be reused)`);
       }
       
       this.clientToIp.delete(clientId);

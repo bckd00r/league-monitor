@@ -46,8 +46,9 @@ export class SessionClient {
       if (sessionToken) {
         this.joinSession(sessionToken);
       } else if (this.role === 'controller') {
-        // Controller creates new session
-        this.createSession();
+        // Controller: try auto-join by IP first, if fails create new session
+        this.logger.info('No token provided, attempting auto-join by IP...');
+        this.joinSession(); // No token, server will auto-match by IP or create new
       } else if (this.role === 'follower') {
         // Follower without token - try auto-join by IP
         this.logger.info('No token provided, attempting auto-join by IP...');
@@ -168,12 +169,24 @@ export class SessionClient {
       case 'ERROR':
         this.logger.error(`Server error: ${message.message}`);
         
-        // If auto-join failed (no session found), retry periodically
-        if (this.role === 'follower' && 
-            !this.sessionToken && 
+        // If session not found error, try IP-based auto-join
+        if (message.message?.includes('Session not found') || 
             message.message?.includes('No session found')) {
-          this.logger.info('Controller not found yet, will retry auto-join in 5 seconds...');
-          this.scheduleAutoJoinRetry();
+          
+          if (this.role === 'follower' && !this.sessionToken) {
+            // Follower: retry auto-join periodically
+            this.logger.info('Controller not found yet, will retry auto-join in 5 seconds...');
+            this.scheduleAutoJoinRetry();
+          } else if (this.role === 'controller' && this.sessionToken) {
+            // Controller: token invalid, try IP-based auto-join
+            this.logger.info('Session token invalid, trying IP-based auto-join...');
+            this.sessionToken = undefined; // Clear invalid token
+            this.joinSession(); // Try auto-join by IP
+          } else if (this.role === 'controller' && !this.sessionToken) {
+            // Controller: no token, already trying auto-join, retry
+            this.logger.info('Retrying IP-based auto-join...');
+            setTimeout(() => this.joinSession(), 2000);
+          }
         }
         break;
 

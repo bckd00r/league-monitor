@@ -96,9 +96,9 @@ class RelayServer {
 
     switch (message.type) {
       case 'CREATE_SESSION':
-        const clientIp = this.clientIps.get(ws) || 'unknown';
+        const createSessionIp = this.clientIps.get(ws) || 'unknown';
         const { token, isNew } = this.sessionManager.findOrCreateSessionByIp(
-          clientIp,
+          createSessionIp,
           ws,
           clientId,
           'controller'
@@ -123,16 +123,17 @@ class RelayServer {
         break;
 
       case 'JOIN':
-        const followerIp = this.clientIps.get(ws) || 'unknown';
+        const clientIp = this.clientIps.get(ws) || 'unknown';
         
         // If no token provided, try to auto-join by IP
         if (!message.sessionToken) {
-          logger.info(`No token provided, attempting auto-join by IP: ${followerIp}`);
+          logger.info(`No token provided, attempting auto-join by IP: ${clientIp}`);
+          const role = message.role || 'follower';
           const { token: autoToken, isNew } = this.sessionManager.findOrCreateSessionByIp(
-            followerIp,
+            clientIp,
             ws,
             clientId,
-            message.role || 'follower'
+            role
           );
           
           if (!isNew) {
@@ -140,19 +141,33 @@ class RelayServer {
             const sessionInfo = this.sessionManager.getSessionInfo(autoToken);
             this.send(ws, {
               type: 'JOINED',
-              role: message.role || 'follower',
+              role: role,
               sessionToken: autoToken,
               sessionInfo,
               autoJoined: true
             });
             break;
           } else {
-            // No existing session found, need token
-            this.send(ws, { 
-              type: 'ERROR', 
-              message: 'No session found for your IP. Please provide a session token or start controller first.' 
-            });
-            return;
+            // New session created (for controller) or no existing session (for follower)
+            if (role === 'controller') {
+              // Controller created new session via auto-join
+              const sessionInfo = this.sessionManager.getSessionInfo(autoToken);
+              this.send(ws, {
+                type: 'JOINED',
+                role: 'controller',
+                sessionToken: autoToken,
+                sessionInfo,
+                autoJoined: true
+              });
+              break;
+            } else {
+              // Follower: No existing session found, need token
+              this.send(ws, { 
+                type: 'ERROR', 
+                message: 'No session found for your IP. Please provide a session token or start controller first.' 
+              });
+              return;
+            }
           }
         }
 
