@@ -138,6 +138,36 @@ export class ProcessUtils {
   }
 
   /**
+   * Get process count by description/product name (Windows only)
+   * Useful for counting processes by their "Description" or "Product Name" field
+   */
+  static async getProcessCountByDescription(description: string): Promise<number> {
+    try {
+      const platform = process.platform;
+
+      if (platform === 'win32') {
+        // Windows: use wmic to get processes by description
+        const { stdout } = await execAsync(
+          `wmic process where "Description='${description}'" get ProcessId /value`
+        );
+        
+        const lines = stdout.trim().split('\n').filter(line => line.includes('ProcessId='));
+        return lines.length;
+      } else if (platform === 'darwin') {
+        // macOS: Not easily supported, return 0
+        logger.warn('getProcessCountByDescription is not supported on macOS');
+        return 0;
+      } else {
+        logger.warn(`Unsupported platform: ${platform}`);
+        return 0;
+      }
+    } catch (error) {
+      // If no processes found, wmic returns error
+      return 0;
+    }
+  }
+
+  /**
    * Launch an application
    */
   static async launchApp(appPath: string, args: string[] = []): Promise<boolean> {
@@ -151,12 +181,17 @@ export class ProcessUtils {
           stdio: 'ignore'
         }).unref();
       } else if (platform === 'win32') {
-        // Windows: direct spawn
-        spawn(appPath, args, {
+        // Windows: Spawn directly with CREATE_NO_WINDOW flag
+        logger.info(`Launching: ${appPath} ${args.join(' ')}`);
+        
+        const child = spawn(appPath, args, {
           detached: true,
           stdio: 'ignore',
-          shell: true
-        }).unref();
+          windowsVerbatimArguments: false,
+          windowsHide: false
+        });
+            
+        child.unref();
       } else {
         logger.error(`Unsupported platform: ${platform}`);
         return false;

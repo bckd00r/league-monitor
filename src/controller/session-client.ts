@@ -11,6 +11,7 @@ export class SessionClient {
   private reconnectTimer?: NodeJS.Timeout;
   private onRestartEvent?: () => void;
   private onStatusRequest?: () => Promise<boolean>;
+  private onImmediateStart?: () => void;
   private isConnected: boolean = false;
 
   constructor(serverHost: string, serverPort: number, role: 'controller' | 'follower') {
@@ -25,6 +26,10 @@ export class SessionClient {
 
   setStatusRequestCallback(callback: () => Promise<boolean>): void {
     this.onStatusRequest = callback;
+  }
+
+  setImmediateStartCallback(callback: () => void): void {
+    this.onImmediateStart = callback;
   }
 
   async connect(sessionToken?: string): Promise<void> {
@@ -115,8 +120,19 @@ export class SessionClient {
         }
         break;
 
+      case 'IMMEDIATE_START':
+        this.logger.info('Received immediate start command from controller!');
+        if (this.onImmediateStart) {
+          this.onImmediateStart();
+        }
+        break;
+
       case 'RESTART_BROADCASTED':
         this.logger.success(`Restart event sent to ${message.sentTo} follower(s)`);
+        break;
+
+      case 'IMMEDIATE_START_BROADCASTED':
+        this.logger.success(`Immediate start command sent to ${message.sentTo} follower(s)`);
         break;
 
       case 'STATUS_UPDATE':
@@ -161,6 +177,17 @@ export class SessionClient {
 
     this.send({
       type: 'RESTART'
+    });
+  }
+
+  broadcastImmediateStart(): void {
+    if (!this.isConnected) {
+      this.logger.warn('Not connected, cannot broadcast immediate start');
+      return;
+    }
+
+    this.send({
+      type: 'IMMEDIATE_START'
     });
   }
 

@@ -37,15 +37,71 @@ async function main() {
   );
 
   sessionClient.setRestartCallback(async () => {
-    logger.info(`Waiting ${config.restartDelay}ms before restarting client...`);
+    const { ProcessUtils } = await import('../shared/process-utils.js');
+    const clientProcessName = LeagueUtils.getLeagueClientProcessName();
+    const isClientRunning = await ProcessUtils.isProcessRunning(clientProcessName);
     
-    await new Promise(resolve => setTimeout(resolve, config.restartDelay));
+    if (isClientRunning) {
+      // Client already running - kill and restart immediately
+      logger.info('LeagueClient is already running, restarting immediately...');
+      
+      const killedCount = await ProcessUtils.killProcessByName(clientProcessName);
+      if (killedCount > 0) {
+        logger.success('Killed existing LeagueClient');
+        // Wait a moment for process to fully terminate
+        await new Promise(resolve => setTimeout(resolve, 2000));
+      }
+      
+      logger.info('Launching LeagueClient immediately...');
+      const success = await LeagueUtils.launchLeagueClient();
+      
+      if (success) {
+        logger.success('Client launched successfully (immediate restart)');
+      } else {
+        logger.error('Failed to launch client');
+      }
+    } else {
+      // Client not running - wait delay then start
+      logger.info(`LeagueClient not running, waiting ${config.restartDelay}ms before starting...`);
+      
+      await new Promise(resolve => setTimeout(resolve, config.restartDelay));
+      
+      logger.info('Starting League Client...');
+      const success = await LeagueUtils.launchLeagueClient();
+      
+      if (success) {
+        logger.success('Client launched successfully (delayed start)');
+      } else {
+        logger.error('Failed to launch client');
+      }
+    }
+  });
+
+  // Immediate start callback - no delay, start immediately
+  sessionClient.setImmediateStartCallback(async () => {
+    const { ProcessUtils } = await import('../shared/process-utils.js');
+    const clientProcessName = LeagueUtils.getLeagueClientProcessName();
+    const isClientRunning = await ProcessUtils.isProcessRunning(clientProcessName);
     
-    logger.info('Starting League Client...');
+    logger.info('IMMEDIATE START command received from controller!');
+    
+    if (isClientRunning) {
+      // Client already running - kill and restart immediately
+      logger.info('LeagueClient is already running, killing and restarting immediately...');
+      
+      const killedCount = await ProcessUtils.killProcessByName(clientProcessName);
+      if (killedCount > 0) {
+        logger.success('Killed existing LeagueClient');
+        // Wait a moment for process to fully terminate
+        await new Promise(resolve => setTimeout(resolve, 2000));
+      }
+    }
+    
+    logger.info('Launching LeagueClient immediately (no delay)...');
     const success = await LeagueUtils.launchLeagueClient();
     
     if (success) {
-      logger.success('Client launched successfully');
+      logger.success('Client launched successfully (immediate start - no delay)');
     } else {
       logger.error('Failed to launch client');
     }

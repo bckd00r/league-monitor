@@ -133,7 +133,7 @@ export class LeagueUtils {
    * Get League Game process name based on platform
    */
   static getLeagueGameProcessName(): string {
-    return process.platform === 'darwin' ? 'League of Legends' : 'League of Legends';
+    return process.platform === 'darwin' ? 'League Of Legends' : 'League Of Legends';
   }
 
   /**
@@ -150,7 +150,8 @@ export class LeagueUtils {
     // Default args for launching League
     const defaultArgs = [
       '--launch-product=league_of_legends',
-      '--launch-patchline=live'
+      '--launch-patchline=live',
+      '--allow-multiple-clients'
     ];
 
     const allArgs = [...defaultArgs, ...args];

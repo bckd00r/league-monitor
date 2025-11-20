@@ -218,6 +218,36 @@ export class SessionManager {
   }
 
   /**
+   * Broadcast immediate start command from controller to all followers
+   */
+  broadcastImmediateStart(controllerClientId: string): number {
+    const token = this.clientToSession.get(controllerClientId);
+    if (!token) return 0;
+
+    const session = this.sessions.get(token);
+    if (!session) return 0;
+
+    this.logger.info(`Broadcasting immediate start command for session: ${token}`);
+
+    let sentCount = 0;
+    session.followers.forEach((follower) => {
+      try {
+        follower.ws.send(JSON.stringify({
+          type: 'IMMEDIATE_START',
+          timestamp: Date.now(),
+          sessionToken: token
+        }));
+        sentCount++;
+      } catch (error) {
+        this.logger.error(`Failed to send immediate start to follower ${follower.clientId}`, error as Error);
+      }
+    });
+
+    this.logger.success(`Immediate start command sent to ${sentCount} follower(s)`);
+    return sentCount;
+  }
+
+  /**
    * Get session info
    */
   getSessionInfo(token: string) {

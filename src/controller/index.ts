@@ -32,6 +32,12 @@ async function main() {
     sessionClient.broadcastRestart();
   });
 
+  // Set callback to broadcast immediate start when 7 processes detected
+  monitor.setImmediateStartCallback(() => {
+    logger.info('7 League of Legends processes detected, sending immediate start command...');
+    sessionClient.broadcastImmediateStart();
+  });
+
   // Set callback for status requests
   sessionClient.setStatusRequestCallback(async () => {
     const { ProcessUtils } = await import('../shared/process-utils.js');

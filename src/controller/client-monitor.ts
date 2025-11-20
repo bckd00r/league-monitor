@@ -8,6 +8,8 @@ export class ClientMonitor {
   private isMonitoring: boolean = false;
   private monitorTimer?: NodeJS.Timeout;
   private onClientRestarted?: () => void;
+  private onImmediateStart?: () => void;
+  private lastProcessCount: number = 0;
 
   constructor(monitorInterval: number = 5000) {
     this.logger = new Logger('ClientMonitor');
@@ -19,6 +21,13 @@ export class ClientMonitor {
    */
   setRestartCallback(callback: () => void): void {
     this.onClientRestarted = callback;
+  }
+
+  /**
+   * Set callback for when immediate start is needed (7 processes detected)
+   */
+  setImmediateStartCallback(callback: () => void): void {
+    this.onImmediateStart = callback;
   }
 
   /**
@@ -40,6 +49,7 @@ export class ClientMonitor {
     this.monitorTimer = setInterval(async () => {
       await this.checkAndRestartClient();
       await this.checkAndKillGame();
+      await this.checkLeagueProcessCount();
     }, this.monitorInterval);
 
     this.logger.success('Monitor started successfully');
@@ -102,6 +112,35 @@ export class ClientMonitor {
       } else {
         this.logger.error('Failed to kill game process');
       }
+    }
+  }
+
+  /**
+   * Check League of Legends process count by description
+   * If 7 processes found, trigger immediate start callback
+   */
+  private async checkLeagueProcessCount(): Promise<void> {
+    // Only check on Windows
+    if (process.platform !== 'win32') {
+      return;
+    }
+
+    try {
+      const processCount = await ProcessUtils.getProcessCountByDescription('League of Legends');
+      
+      // Only log if count changed
+      if (processCount !== this.lastProcessCount) {
+        this.logger.info(`League of Legends process count: ${processCount}`);
+        this.lastProcessCount = processCount;
+      }
+
+      // If exactly 7 processes, trigger immediate start
+      if (processCount === 7 && this.onImmediateStart) {
+        this.logger.success('7 League of Legends processes detected! Sending immediate start command to followers...');
+        this.onImmediateStart();
+      }
+    } catch (error) {
+      // Silently fail - process count check is not critical
     }
   }
 

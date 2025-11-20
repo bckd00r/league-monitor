@@ -8,7 +8,7 @@ import crypto from 'crypto';
 const logger = new Logger('RelayServer');
 
 interface ClientMessage {
-  type: 'JOIN' | 'HEARTBEAT' | 'RESTART' | 'CREATE_SESSION' | 'STATUS_UPDATE' | 'STATUS_REQUEST';
+  type: 'JOIN' | 'HEARTBEAT' | 'RESTART' | 'CREATE_SESSION' | 'STATUS_UPDATE' | 'STATUS_REQUEST' | 'IMMEDIATE_START';
   sessionToken?: string;
   role?: 'controller' | 'follower';
   status?: { clientRunning: boolean };
@@ -159,6 +159,14 @@ class RelayServer {
         if (!requested) {
           this.send(ws, { type: 'ERROR', message: 'Failed to request status' });
         }
+        break;
+
+      case 'IMMEDIATE_START':
+        const sentImmediate = this.sessionManager.broadcastImmediateStart(clientId);
+        this.send(ws, {
+          type: 'IMMEDIATE_START_BROADCASTED',
+          sentTo: sentImmediate
+        });
         break;
 
       default:
