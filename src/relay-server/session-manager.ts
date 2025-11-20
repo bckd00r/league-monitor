@@ -20,6 +20,8 @@ export class SessionManager {
   private logger: Logger;
   private sessions: Map<string, Session> = new Map();
   private clientToSession: Map<string, string> = new Map();
+  private ipToSession: Map<string, string> = new Map(); // IP -> Session Token
+  private clientToIp: Map<string, string> = new Map(); // ClientId -> IP
 
   constructor() {
     this.logger = new Logger('SessionManager');
@@ -105,6 +107,7 @@ export class SessionManager {
     }
 
     this.clientToSession.delete(clientId);
+    this.removeIpMapping(clientId);
 
     // Remove session if no clients
     if (!session.controller && session.followers.size === 0) {
@@ -302,5 +305,64 @@ export class SessionManager {
    */
   sessionExists(token: string): boolean {
     return this.sessions.has(token);
+  }
+
+  /**
+   * Find or create session by IP address
+   * If same IP has a controller session, automatically join it
+   */
+  findOrCreateSessionByIp(
+    ip: string,
+    ws: any,
+    clientId: string,
+    role: 'controller' | 'follower'
+  ): { token: string; isNew: boolean } {
+    // Normalize IP (handle IPv6 mapped IPv4)
+    const normalizedIp = ip?.replace(/^::ffff:/, '') || 'unknown';
+
+    // Check if there's an existing session for this IP
+    const existingToken = this.ipToSession.get(normalizedIp);
+    
+    if (existingToken && this.sessions.has(existingToken)) {
+      // Existing session found, join it
+      this.logger.info(`Found existing session for IP ${normalizedIp}: ${existingToken}`);
+      const joined = this.joinSession(existingToken, ws, clientId, role);
+      if (joined) {
+        this.clientToIp.set(clientId, normalizedIp);
+        return { token: existingToken, isNew: false };
+      }
+    }
+
+    // No existing session or join failed, create new one
+    const token = this.generateToken();
+    this.ipToSession.set(normalizedIp, token);
+    this.clientToIp.set(clientId, normalizedIp);
+    
+    const joined = this.joinSession(token, ws, clientId, role);
+    if (joined) {
+      this.logger.success(`Created new session for IP ${normalizedIp}: ${token}`);
+      return { token, isNew: true };
+    }
+
+    return { token, isNew: true };
+  }
+
+  /**
+   * Remove IP mapping when client disconnects
+   */
+  removeIpMapping(clientId: string): void {
+    const ip = this.clientToIp.get(clientId);
+    if (ip) {
+      const token = this.ipToSession.get(ip);
+      const session = token ? this.sessions.get(token) : null;
+      
+      // Only remove IP mapping if no clients left in session
+      if (session && !session.controller && session.followers.size === 0) {
+        this.ipToSession.delete(ip);
+        this.logger.info(`Removed IP mapping for ${ip}`);
+      }
+      
+      this.clientToIp.delete(clientId);
+    }
   }
 }

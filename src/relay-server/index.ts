@@ -19,6 +19,7 @@ class RelayServer {
   private wss: WebSocketServer;
   private httpServer;
   private clientIds: Map<WebSocket, string> = new Map();
+  private clientIps: Map<WebSocket, string> = new Map(); // Store IP for each WebSocket
 
   constructor(private port: number) {
     this.sessionManager = new SessionManager();
@@ -54,8 +55,12 @@ class RelayServer {
       const clientId = crypto.randomBytes(8).toString('hex');
       this.clientIds.set(ws, clientId);
 
-      const clientIp = req.socket.remoteAddress;
-      logger.info(`Client connected: ${clientId} from ${clientIp}`);
+      // Get and normalize IP address
+      const clientIp = req.socket.remoteAddress || 'unknown';
+      const normalizedIp = clientIp.replace(/^::ffff:/, '');
+      this.clientIps.set(ws, normalizedIp);
+      
+      logger.info(`Client connected: ${clientId} from ${normalizedIp}`);
 
       ws.on('message', (data: Buffer) => {
         try {
@@ -70,6 +75,7 @@ class RelayServer {
         logger.info(`Client disconnected: ${clientId}`);
         this.sessionManager.removeClient(clientId);
         this.clientIds.delete(ws);
+        this.clientIps.delete(ws);
       });
 
       ws.on('error', (error) => {
@@ -90,17 +96,69 @@ class RelayServer {
 
     switch (message.type) {
       case 'CREATE_SESSION':
-        const token = this.sessionManager.generateToken();
+        const clientIp = this.clientIps.get(ws) || 'unknown';
+        const { token, isNew } = this.sessionManager.findOrCreateSessionByIp(
+          clientIp,
+          ws,
+          clientId,
+          'controller'
+        );
+        
         this.send(ws, {
           type: 'SESSION_CREATED',
           token,
-          message: 'Use this token to connect other clients'
+          message: isNew 
+            ? 'New session created (same IP clients will auto-connect)' 
+            : 'Joined existing session for your IP'
+        });
+        
+        // Auto-join the session
+        const sessionInfo = this.sessionManager.getSessionInfo(token);
+        this.send(ws, {
+          type: 'JOINED',
+          role: 'controller',
+          sessionToken: token,
+          sessionInfo
         });
         break;
 
       case 'JOIN':
-        if (!message.sessionToken || !message.role) {
-          this.send(ws, { type: 'ERROR', message: 'Missing sessionToken or role' });
+        const followerIp = this.clientIps.get(ws) || 'unknown';
+        
+        // If no token provided, try to auto-join by IP
+        if (!message.sessionToken) {
+          logger.info(`No token provided, attempting auto-join by IP: ${followerIp}`);
+          const { token: autoToken, isNew } = this.sessionManager.findOrCreateSessionByIp(
+            followerIp,
+            ws,
+            clientId,
+            message.role || 'follower'
+          );
+          
+          if (!isNew) {
+            // Found existing session, auto-joined
+            const sessionInfo = this.sessionManager.getSessionInfo(autoToken);
+            this.send(ws, {
+              type: 'JOINED',
+              role: message.role || 'follower',
+              sessionToken: autoToken,
+              sessionInfo,
+              autoJoined: true
+            });
+            break;
+          } else {
+            // No existing session found, need token
+            this.send(ws, { 
+              type: 'ERROR', 
+              message: 'No session found for your IP. Please provide a session token or start controller first.' 
+            });
+            return;
+          }
+        }
+
+        // Token provided, use normal join flow
+        if (!message.role) {
+          this.send(ws, { type: 'ERROR', message: 'Missing role' });
           return;
         }
 

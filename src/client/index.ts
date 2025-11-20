@@ -9,24 +9,18 @@ const logger = new Logger('Follower');
 const config = getFollowerConfig();
 
 async function main() {
-  // Get token from command line argument
+  // Get token from command line argument (optional - will auto-join by IP if not provided)
   const sessionToken = process.argv[2];
 
-  if (!sessionToken) {
-    console.log('\n='.repeat(60));
-    console.log('League Client Follower');
-    console.log('='.repeat(60));
-    console.log('\nUsage:');
-    console.log('  npm run follower <session-token>');
-    console.log('\nExample:');
-    console.log('  npm run follower abc123def456\n');
-    console.log('Get the session token from the controller output.\n');
-    process.exit(1);
-  }
-
-  logger.info('Starting League Client Follower with Session Token...');
+  logger.info('Starting League Client Follower...');
   logger.info(`Platform: ${process.platform}`);
-  logger.info(`Session token: ${sessionToken}`);
+  
+  if (sessionToken) {
+    logger.info(`Session token: ${sessionToken}`);
+  } else {
+    logger.info('No token provided - will attempt auto-join by IP address');
+    logger.info('(Make sure controller is running on the same machine/IP)');
+  }
 
   // Initialize session client
   const sessionClient = new SessionClient(

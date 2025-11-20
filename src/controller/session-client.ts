@@ -46,6 +46,10 @@ export class SessionClient {
       } else if (this.role === 'controller') {
         // Controller creates new session
         this.createSession();
+      } else if (this.role === 'follower') {
+        // Follower without token - try auto-join by IP
+        this.logger.info('No token provided, attempting auto-join by IP...');
+        this.joinSession(); // No token, server will auto-match by IP
       }
     });
 
@@ -75,11 +79,13 @@ export class SessionClient {
     });
   }
 
-  private joinSession(token: string): void {
-    this.sessionToken = token;
+  private joinSession(token?: string): void {
+    if (token) {
+      this.sessionToken = token;
+    }
     this.send({
       type: 'JOIN',
-      sessionToken: token,
+      sessionToken: token, // Can be undefined for auto-join by IP
       role: this.role
     });
   }
@@ -100,7 +106,11 @@ export class SessionClient {
         break;
 
       case 'JOINED':
+        this.sessionToken = message.sessionToken;
         this.logger.success(`Joined session as ${message.role}`);
+        if (message.autoJoined) {
+          this.logger.success('Auto-joined session by IP address (same IP as controller)');
+        }
         this.logger.info(`Session: ${message.sessionToken}`);
         if (message.sessionInfo) {
           this.logger.info(`Controller: ${message.sessionInfo.hasController ? 'Yes' : 'No'}`);
