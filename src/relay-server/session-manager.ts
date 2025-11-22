@@ -221,6 +221,30 @@ export class SessionManager {
   }
 
   /**
+   * Forward restart request from follower to controller
+   */
+  forwardRestartRequest(followerClientId: string): boolean {
+    const token = this.clientToSession.get(followerClientId);
+    if (!token) return false;
+
+    const session = this.sessions.get(token);
+    if (!session || !session.controller) return false;
+
+    try {
+      session.controller.ws.send(JSON.stringify({
+        type: 'GAME_RUNNING_RESTART_REQUEST',
+        timestamp: Date.now(),
+        fromFollower: followerClientId
+      }));
+      this.logger.info(`Restart request forwarded from follower ${followerClientId} to controller for session: ${token}`);
+      return true;
+    } catch (error) {
+      this.logger.error('Failed to forward restart request', error as Error);
+      return false;
+    }
+  }
+
+  /**
    * Broadcast immediate start command from controller to all followers
    */
   broadcastImmediateStart(controllerClientId: string): number {

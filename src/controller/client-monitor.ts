@@ -9,10 +9,13 @@ export class ClientMonitor {
   private monitorTimer?: NodeJS.Timeout;
   private onImmediateStart?: () => void;
   private onClientStarted?: () => void;
+  private onRestart?: () => void; // Callback for VGC exit code 185 restart
   private lastProcessCount: number = 0;
   private immediateStartTriggered: boolean = false;
   private lastRestartTime: number = 0;
   private lastLogTime: number = 0;
+  private lastVgcCheckTime: number = 0;
+  private vgcRestartTriggered: boolean = false;
   private readonly restartCooldown: number = 30000; // 30 seconds cooldown
 
   constructor(monitorInterval: number = 5000) {
@@ -35,6 +38,13 @@ export class ClientMonitor {
   }
 
   /**
+   * Set callback for when restart is needed (VGC exit code 185)
+   */
+  setRestartCallback(callback: () => void): void {
+    this.onRestart = callback;
+  }
+
+  /**
    * Start monitoring League Client
    */
   async start(): Promise<void> {
@@ -54,6 +64,7 @@ export class ClientMonitor {
       await this.checkAndRestartClient();
       await this.checkAndKillGame();
       await this.checkLeagueProcessCount();
+      await this.checkVgcService(); // Check VGC service exit code
     }, this.monitorInterval);
 
     this.logger.success('Monitor started successfully');
@@ -197,6 +208,94 @@ export class ClientMonitor {
     } catch (error) {
       // Log error for debugging
       this.logger.error('Failed to check League of Legends process count', error as Error);
+    }
+  }
+
+  /**
+   * Check VGC service exit code
+   * If exit code is 185, restart League Client and notify followers
+   * This runs every monitorInterval (default 5 seconds)
+   */
+  private async checkVgcService(): Promise<void> {
+    // Only check on Windows
+    if (process.platform !== 'win32') {
+      return;
+    }
+
+    try {
+      const exitCode185 = await ProcessUtils.checkVgcServiceExitCode185();
+
+      if (exitCode185) {
+        // Exit code 185 detected
+        if (!this.vgcRestartTriggered) {
+          this.logger.warn('VGC service exit code 185 detected! Restarting League Client...');
+          this.vgcRestartTriggered = true;
+          
+          // Kill existing League Client if running
+          const processName = LeagueUtils.getLeagueClientProcessName();
+          const isRunning = await ProcessUtils.isProcessRunning(processName);
+          
+          if (isRunning) {
+            this.logger.info('Killing existing League Client due to VGC exit code 185...');
+            await ProcessUtils.killProcessByName(processName);
+            // Wait for process to fully terminate
+            await new Promise(resolve => setTimeout(resolve, 2000));
+          }
+
+          // Check cooldown - don't restart if we just restarted recently
+          const timeSinceLastRestart = Date.now() - this.lastRestartTime;
+          if (timeSinceLastRestart < this.restartCooldown) {
+            const remainingSeconds = Math.ceil((this.restartCooldown - timeSinceLastRestart) / 1000);
+            this.logger.info(`VGC exit code 185 detected, but in cooldown period (${remainingSeconds}s remaining). Skipping restart.`);
+            return;
+          }
+
+          // Restart League Client
+          this.logger.info('Restarting League Client due to VGC exit code 185...');
+          const success = await LeagueUtils.launchLeagueClient();
+
+          if (success) {
+            this.lastRestartTime = Date.now();
+            this.logger.success('League Client restarted successfully due to VGC exit code 185');
+
+            // Wait for process to appear
+            this.logger.info('Waiting for League Client process to appear...');
+            const processAppeared = await ProcessUtils.waitForProcess(processName, 15000);
+
+            if (processAppeared) {
+              this.logger.success('League Client process detected');
+            } else {
+              this.logger.warn('League Client process not detected after 15 seconds, but launch was successful');
+            }
+
+            // Notify followers about restart
+            if (this.onRestart) {
+              this.logger.info('Notifying followers about restart due to VGC exit code 185...');
+              this.onRestart();
+            } else {
+              this.logger.warn('VGC exit code 185 detected but onRestart callback is not set!');
+            }
+          } else {
+            this.logger.error('Failed to restart League Client due to VGC exit code 185');
+          }
+        } else {
+          // Already triggered, just log occasionally
+          const now = Date.now();
+          if (!this.lastVgcCheckTime || now - this.lastVgcCheckTime > 30000) {
+            this.logger.info('VGC service exit code 185 still detected (already triggered restart)');
+            this.lastVgcCheckTime = now;
+          }
+        }
+      } else {
+        // Exit code is not 185, reset trigger flag
+        if (this.vgcRestartTriggered) {
+          this.logger.info('VGC service exit code is no longer 185, resetting trigger flag');
+          this.vgcRestartTriggered = false;
+        }
+      }
+    } catch (error) {
+      // Log error for debugging
+      this.logger.error('Failed to check VGC service', error as Error);
     }
   }
 

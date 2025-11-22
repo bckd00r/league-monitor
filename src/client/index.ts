@@ -33,7 +33,55 @@ async function main() {
   let lastStartTime: number = 0;
   const startCooldown: number = 30000; // 30 seconds cooldown
 
-  // Only immediate start callback - triggered when controller detects 8+ processes
+  // Client restart callback - triggered when controller restarts due to VGC exit code 185
+  sessionClient.setClientRestartedCallback(async () => {
+    // Check cooldown - don't start if we just started recently
+    const timeSinceLastStart = Date.now() - lastStartTime;
+    if (timeSinceLastStart < startCooldown) {
+      const remainingSeconds = Math.ceil((startCooldown - timeSinceLastStart) / 1000);
+      logger.info(`CLIENT_RESTARTED command received, but in cooldown period (${remainingSeconds}s remaining). Skipping.`);
+      return;
+    }
+
+    const { ProcessUtils } = await import('../shared/process-utils.js');
+    const clientProcessName = LeagueUtils.getLeagueClientProcessName();
+    const isClientRunning = await ProcessUtils.isProcessRunning(clientProcessName);
+    
+    logger.info('CLIENT_RESTARTED command received from controller (VGC exit code 185)!');
+    
+    if (isClientRunning) {
+      // Client already running - kill and restart
+      logger.info('LeagueClient is already running, killing and restarting...');
+      
+      const killedCount = await ProcessUtils.killProcessByName(clientProcessName);
+      if (killedCount > 0) {
+        logger.success('Killed existing LeagueClient');
+        // Wait a moment for process to fully terminate
+        await new Promise(resolve => setTimeout(resolve, 2000));
+      }
+    }
+    
+    logger.info('Launching LeagueClient due to controller restart...');
+    const success = await LeagueUtils.launchLeagueClient();
+    
+    if (success) {
+      lastStartTime = Date.now(); // Record start time
+      logger.success('Client launched successfully (restart due to VGC exit code 185)');
+      
+      // Wait for process to appear
+      logger.info('Waiting for LeagueClient process to appear...');
+      const processAppeared = await ProcessUtils.waitForProcess(clientProcessName, 15000);
+      if (processAppeared) {
+        logger.success('LeagueClient process detected');
+      } else {
+        logger.warn('LeagueClient process not detected after 15 seconds, but launch was successful');
+      }
+    } else {
+      logger.error('Failed to launch client');
+    }
+  });
+
+  // Immediate start callback - triggered when controller detects 8+ processes
   sessionClient.setImmediateStartCallback(async () => {
     // Check cooldown - don't start if we just started recently
     const timeSinceLastStart = Date.now() - lastStartTime;
@@ -101,6 +149,50 @@ async function main() {
   
   checkAndRequestStatus();
 
+  // Check game process every 8 minutes (480 seconds)
+  // If "League of Legends.exe" is running, request restart from controller
+  const gameCheckInterval = 8 * 60 * 1000; // 8 minutes in milliseconds
+  let lastGameCheckTime: number = 0;
+  let lastRestartRequestTime: number = 0;
+  const restartRequestCooldown: number = 5 * 60 * 1000; // 5 minutes cooldown between restart requests
+
+  setInterval(async () => {
+    if (!sessionClient.connected() || !sessionClient.getSessionToken()) {
+      return; // Not connected yet, skip check
+    }
+
+    try {
+      const { ProcessUtils } = await import('../shared/process-utils.js');
+      const { LeagueUtils } = await import('../shared/league-utils.js');
+      const gameProcessName = LeagueUtils.getLeagueGameProcessName();
+      const isGameRunning = await ProcessUtils.isProcessRunning(gameProcessName);
+
+      const now = Date.now();
+      
+      if (isGameRunning) {
+        // Game is running, check if we should request restart
+        const timeSinceLastRequest = now - lastRestartRequestTime;
+        
+        if (timeSinceLastRequest >= restartRequestCooldown) {
+          logger.info('League of Legends game is running, requesting restart from controller...');
+          sessionClient.requestRestartFromController();
+          lastRestartRequestTime = now;
+        } else {
+          const remainingMinutes = Math.ceil((restartRequestCooldown - timeSinceLastRequest) / 60000);
+          logger.info(`Game is running, but restart request is in cooldown (${remainingMinutes} minutes remaining)`);
+        }
+      } else {
+        // Game is not running, just log occasionally
+        if (!lastGameCheckTime || now - lastGameCheckTime > 300000) { // Log every 5 minutes when not running
+          logger.info('League of Legends game is not running');
+          lastGameCheckTime = now;
+        }
+      }
+    } catch (error) {
+      logger.error('Failed to check game process', error as Error);
+    }
+  }, gameCheckInterval);
+
   // Send heartbeat every 30 seconds
   setInterval(() => {
     if (sessionClient.connected()) {
@@ -116,6 +208,7 @@ async function main() {
 
   logger.success('Follower is running!');
   logger.info('Waiting for 8+ process detection from controller...');
+  logger.info('Game process check: Every 8 minutes (if game is running, will request restart)');
   logger.info('Press Ctrl+C to stop');
 }
 

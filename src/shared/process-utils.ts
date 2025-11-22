@@ -317,6 +317,47 @@ export class ProcessUtils {
   }
 
   /**
+   * Check VGC service exit code
+   * Returns true if SERVICE_EXIT_CODE is 185 (0xb9)
+   * Windows only
+   */
+  static async checkVgcServiceExitCode185(): Promise<boolean> {
+    try {
+      const platform = process.platform;
+
+      if (platform !== 'win32') {
+        // Only supported on Windows
+        return false;
+      }
+
+      // Query VGC service status using sc queryex
+      const { stdout } = await execAsync('sc queryex vgc');
+      
+      // Parse SERVICE_EXIT_CODE from output
+      // Format: SERVICE_EXIT_CODE  : 185  (0xb9)
+      const exitCodeMatch = stdout.match(/SERVICE_EXIT_CODE\s*:\s*(\d+)/i);
+      
+      if (exitCodeMatch) {
+        const exitCode = parseInt(exitCodeMatch[1]);
+        const isExitCode185 = exitCode === 185;
+        
+        if (isExitCode185) {
+          logger.warn(`VGC service exit code is 185 (0xb9) - service error detected`);
+        }
+        
+        return isExitCode185;
+      }
+
+      // If exit code not found in output, return false
+      return false;
+    } catch (error) {
+      // Service query failed or service not found
+      logger.warn(`Failed to query VGC service: ${error instanceof Error ? error.message : 'Unknown error'}`);
+      return false;
+    }
+  }
+
+  /**
    * Launch an application
    */
   static async launchApp(appPath: string, args: string[] = []): Promise<boolean> {

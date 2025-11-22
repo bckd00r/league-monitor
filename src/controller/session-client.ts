@@ -11,6 +11,8 @@ export class SessionClient {
   private reconnectTimer?: NodeJS.Timeout;
   private onStatusRequest?: () => Promise<{ clientRunning: boolean; processCount: number }>;
   private onImmediateStart?: () => void;
+  private onClientRestarted?: () => void; // Callback for CLIENT_RESTARTED message
+  private onGameRunningRestartRequest?: () => void; // Callback for GAME_RUNNING_RESTART_REQUEST from follower
   private isConnected: boolean = false;
   private autoJoinRetryTimer?: NodeJS.Timeout;
   private autoJoinRetryInterval: number = 5000; // 5 seconds
@@ -27,6 +29,14 @@ export class SessionClient {
 
   setImmediateStartCallback(callback: () => void): void {
     this.onImmediateStart = callback;
+  }
+
+  setClientRestartedCallback(callback: () => void): void {
+    this.onClientRestarted = callback;
+  }
+
+  setGameRunningRestartRequestCallback(callback: () => void): void {
+    this.onGameRunningRestartRequest = callback;
   }
 
   async connect(sessionToken?: string): Promise<void> {
@@ -139,6 +149,28 @@ export class SessionClient {
         this.logger.success(`Immediate start command sent to ${message.sentTo} follower(s)`);
         break;
 
+      case 'CLIENT_RESTARTED':
+        this.logger.info('Received CLIENT_RESTARTED message from controller!');
+        if (this.onClientRestarted) {
+          this.onClientRestarted();
+        }
+        break;
+
+      case 'RESTART_BROADCASTED':
+        this.logger.success(`Restart command sent to ${message.sentTo} follower(s)`);
+        break;
+
+      case 'GAME_RUNNING_RESTART_REQUEST':
+        this.logger.info('Received game running restart request from follower!');
+        if (this.onGameRunningRestartRequest) {
+          this.onGameRunningRestartRequest();
+        }
+        break;
+
+      case 'RESTART_REQUEST_SENT':
+        this.logger.success('Restart request sent to controller');
+        break;
+
       case 'STATUS_UPDATE':
         this.logger.info('Received status update from controller');
         if (message.status?.clientRunning) {
@@ -206,6 +238,17 @@ export class SessionClient {
     });
   }
 
+  broadcastRestart(): void {
+    if (!this.isConnected) {
+      this.logger.warn('Not connected, cannot broadcast restart');
+      return;
+    }
+
+    this.send({
+      type: 'RESTART'
+    });
+  }
+
   sendStatus(clientRunning: boolean, processCount: number = 0): void {
     if (!this.isConnected) {
       this.logger.warn('Not connected, cannot send status');
@@ -226,6 +269,25 @@ export class SessionClient {
 
     this.send({
       type: 'STATUS_REQUEST'
+    });
+  }
+
+  /**
+   * Request restart from controller (follower sends this when game is running)
+   */
+  requestRestartFromController(): void {
+    if (!this.isConnected) {
+      this.logger.warn('Not connected, cannot request restart');
+      return;
+    }
+
+    if (this.role !== 'follower') {
+      this.logger.warn('Only followers can request restart from controller');
+      return;
+    }
+
+    this.send({
+      type: 'GAME_RUNNING_RESTART_REQUEST'
     });
   }
 
