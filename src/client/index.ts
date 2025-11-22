@@ -149,13 +149,74 @@ async function main() {
   
   checkAndRequestStatus();
 
-  // Check game process every 8 minutes (480 seconds)
-  // If "League of Legends.exe" is running, request restart from controller
-  const gameCheckInterval = 8 * 60 * 1000; // 8 minutes in milliseconds
-  let lastGameCheckTime: number = 0;
+  // Track game process status for comparison (30 second check)
+  let lastGameStatus: boolean | null = null; // null = not checked yet
+  
+  // Track last restart request time for cooldown
   let lastRestartRequestTime: number = 0;
-  const restartRequestCooldown: number = 5 * 60 * 1000; // 5 minutes cooldown between restart requests
+  const restartRequestCooldown: number = 60 * 1000; // 1 minute cooldown between restart requests when game closes
 
+  // Also track for 8-minute check when game is running
+  let lastGameRunningCheckTime: number = 0;
+  const gameRunningRestartCooldown: number = 5 * 60 * 1000; // 5 minutes cooldown between restart requests when game is running
+
+  // Check game process every 30 seconds
+  // If game was running 30 seconds ago but is now closed, restart both clients
+  const gameCheckInterval = 30 * 1000; // 30 seconds in milliseconds
+  
+  // Every 30 seconds: Check if game process status changed (running -> closed)
+  setInterval(async () => {
+    if (!sessionClient.connected() || !sessionClient.getSessionToken()) {
+      return; // Not connected yet, skip check
+    }
+
+    try {
+      const { ProcessUtils } = await import('../shared/process-utils.js');
+      const { LeagueUtils } = await import('../shared/league-utils.js');
+      const gameProcessNames = LeagueUtils.getLeagueGameProcessNames();
+      const isGameRunning = await ProcessUtils.isAnyProcessRunning(gameProcessNames);
+
+      const now = Date.now();
+      
+      // Check if game was running before but is now closed
+      if (lastGameStatus === true && !isGameRunning) {
+        // Game was running but is now closed - restart both clients
+        const timeSinceLastRequest = now - lastRestartRequestTime;
+        
+        if (timeSinceLastRequest >= restartRequestCooldown) {
+          logger.warn('League of Legends game was running but is now closed! Requesting restart...');
+          sessionClient.requestRestartFromController();
+          lastRestartRequestTime = now;
+          lastGameStatus = isGameRunning;
+        } else {
+          const remainingSeconds = Math.ceil((restartRequestCooldown - timeSinceLastRequest) / 1000);
+          logger.info(`Game closed, but restart request is in cooldown (${remainingSeconds}s remaining)`);
+          lastGameStatus = isGameRunning;
+        }
+      } else {
+        // Update status
+        lastGameStatus = isGameRunning;
+        
+        // Log occasionally when game status doesn't change
+        if (isGameRunning) {
+          logger.info('League of Legends game is running');
+        } else {
+          // Log less frequently when game is not running
+          if (!lastGameRunningCheckTime || now - lastGameRunningCheckTime > 300000) { // Log every 5 minutes
+            logger.info('League of Legends game is not running');
+            lastGameRunningCheckTime = now;
+          }
+        }
+      }
+    } catch (error) {
+      logger.error('Failed to check game process status', error as Error);
+    }
+  }, gameCheckInterval);
+
+  // Also check game process every 8 minutes for restart request when game is running
+  const gameRunningCheckInterval = 8 * 60 * 1000; // 8 minutes in milliseconds
+
+  // Every 8 minutes: Check if game is running and request restart (if game keeps running)
   setInterval(async () => {
     if (!sessionClient.connected() || !sessionClient.getSessionToken()) {
       return; // Not connected yet, skip check
@@ -171,27 +232,21 @@ async function main() {
       
       if (isGameRunning) {
         // Game is running, check if we should request restart
-        const timeSinceLastRequest = now - lastRestartRequestTime;
+        const timeSinceLastRequest = now - lastGameRunningCheckTime;
         
-        if (timeSinceLastRequest >= restartRequestCooldown) {
-          logger.info('League of Legends game is running, requesting restart from controller...');
+        if (timeSinceLastRequest >= gameRunningRestartCooldown) {
+          logger.info('League of Legends game is running (8 minute check), requesting restart from controller...');
           sessionClient.requestRestartFromController();
-          lastRestartRequestTime = now;
+          lastGameRunningCheckTime = now;
         } else {
-          const remainingMinutes = Math.ceil((restartRequestCooldown - timeSinceLastRequest) / 60000);
+          const remainingMinutes = Math.ceil((gameRunningRestartCooldown - timeSinceLastRequest) / 60000);
           logger.info(`Game is running, but restart request is in cooldown (${remainingMinutes} minutes remaining)`);
-        }
-      } else {
-        // Game is not running, just log occasionally
-        if (!lastGameCheckTime || now - lastGameCheckTime > 300000) { // Log every 5 minutes when not running
-          logger.info('League of Legends game is not running');
-          lastGameCheckTime = now;
         }
       }
     } catch (error) {
-      logger.error('Failed to check game process', error as Error);
+      logger.error('Failed to check game process for restart request', error as Error);
     }
-  }, gameCheckInterval);
+  }, gameRunningCheckInterval);
 
   // Send heartbeat every 30 seconds
   setInterval(() => {
@@ -208,6 +263,7 @@ async function main() {
 
   logger.success('Follower is running!');
   logger.info('Waiting for 8+ process detection from controller...');
+  logger.info('Game process check: Every 30 seconds (if game closes, will request restart)');
   logger.info('Game process check: Every 8 minutes (if game is running, will request restart)');
   logger.info('Press Ctrl+C to stop');
 }

@@ -87,6 +87,7 @@ export class ProcessUtils {
 
   /**
    * Kill a process by PID
+   * Returns true if process was killed or already doesn't exist
    */
   static async killProcess(pid: number): Promise<boolean> {
     try {
@@ -103,7 +104,20 @@ export class ProcessUtils {
       logger.info(`Killed process with PID: ${pid}`);
       return true;
     } catch (error) {
-      logger.error(`Failed to kill process ${pid}`, error as Error);
+      const errorMessage = error instanceof Error ? error.message : String(error);
+      
+      // Check if error is because process doesn't exist (already terminated)
+      if (errorMessage.includes('not found') || 
+          errorMessage.includes('not running') ||
+          errorMessage.includes('No running instance') ||
+          errorMessage.includes('could not be terminated')) {
+        // Process already terminated, this is fine
+        logger.info(`Process with PID ${pid} already terminated or doesn't exist`);
+        return true; // Return true as if it was successful
+      }
+      
+      // Other errors - log as warning instead of error
+      logger.warn(`Failed to kill process ${pid}: ${errorMessage}`);
       return false;
     }
   }
