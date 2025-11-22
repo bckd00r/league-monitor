@@ -10,6 +10,7 @@ export class ProcessUtils {
   /**
    * Check if a process is running by name
    * Works on both macOS and Windows
+   * If processName already includes .exe, it won't be added again
    */
   static async isProcessRunning(processName: string): Promise<boolean> {
     try {
@@ -21,8 +22,12 @@ export class ProcessUtils {
         return stdout.trim().length > 0;
       } else if (platform === 'win32') {
         // Windows: use tasklist
-        const { stdout } = await execAsync(`tasklist /FI "IMAGENAME eq ${processName}.exe" /NH`);
-        return stdout.toLowerCase().includes(processName.toLowerCase());
+        // If processName already has .exe, use it as is; otherwise add .exe
+        const processNameExe = processName.toLowerCase().endsWith('.exe') 
+          ? processName 
+          : `${processName}.exe`;
+        const { stdout } = await execAsync(`tasklist /FI "IMAGENAME eq ${processNameExe}" /NH`);
+        return stdout.toLowerCase().includes(processNameExe.toLowerCase());
       } else {
         logger.warn(`Unsupported platform: ${platform}`);
         return false;
@@ -45,8 +50,12 @@ export class ProcessUtils {
         const result = await execAsync(`pgrep -x "${processName}"`);
         stdout = result.stdout;
       } else if (platform === 'win32') {
+        // If processName already has .exe, use it as is; otherwise add .exe
+        const processNameExe = processName.toLowerCase().endsWith('.exe') 
+          ? processName 
+          : `${processName}.exe`;
         const result = await execAsync(
-          `wmic process where "name='${processName}.exe'" get ProcessId /value`
+          `wmic process where "name='${processNameExe}'" get ProcessId /value`
         );
         stdout = result.stdout;
       } else {
@@ -116,6 +125,35 @@ export class ProcessUtils {
     }
 
     return killedCount;
+  }
+
+  /**
+   * Kill all processes by multiple possible names (tries all until one works)
+   * Useful for processes with varying capitalizations or extensions
+   */
+  static async killProcessByMultipleNames(processNames: string[]): Promise<number> {
+    let totalKilled = 0;
+
+    for (const processName of processNames) {
+      const killed = await this.killProcessByName(processName);
+      totalKilled += killed;
+    }
+
+    return totalKilled;
+  }
+
+  /**
+   * Check if any of the given process names is running
+   * Returns true if at least one process name is found running
+   */
+  static async isAnyProcessRunning(processNames: string[]): Promise<boolean> {
+    for (const processName of processNames) {
+      const isRunning = await this.isProcessRunning(processName);
+      if (isRunning) {
+        return true;
+      }
+    }
+    return false;
   }
 
   /**

@@ -164,8 +164,8 @@ async function main() {
     try {
       const { ProcessUtils } = await import('../shared/process-utils.js');
       const { LeagueUtils } = await import('../shared/league-utils.js');
-      const gameProcessName = LeagueUtils.getLeagueGameProcessName();
-      const isGameRunning = await ProcessUtils.isProcessRunning(gameProcessName);
+      const gameProcessNames = LeagueUtils.getLeagueGameProcessNames();
+      const isGameRunning = await ProcessUtils.isAnyProcessRunning(gameProcessNames);
 
       const now = Date.now();
       

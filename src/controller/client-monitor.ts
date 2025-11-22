@@ -137,15 +137,16 @@ export class ClientMonitor {
 
   /**
    * Check if game process is running, kill it immediately
+   * Checks all possible process name variations
    */
   private async checkAndKillGame(): Promise<void> {
-    const gameProcessName = LeagueUtils.getLeagueGameProcessName();
-    const isRunning = await ProcessUtils.isProcessRunning(gameProcessName);
+    const gameProcessNames = LeagueUtils.getLeagueGameProcessNames();
+    const isRunning = await ProcessUtils.isAnyProcessRunning(gameProcessNames);
 
     if (isRunning) {
       this.logger.warn('League of Legends game detected, killing immediately...');
       
-      const killedCount = await ProcessUtils.killProcessByName(gameProcessName);
+      const killedCount = await ProcessUtils.killProcessByMultipleNames(gameProcessNames);
       
       if (killedCount > 0) {
         this.logger.success(`Killed ${killedCount} game process(es)`);

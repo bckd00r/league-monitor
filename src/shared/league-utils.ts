@@ -145,9 +145,30 @@ export class LeagueUtils {
 
   /**
    * Get League Game process name based on platform
+   * Returns array of possible process names to check (various capitalizations)
+   */
+  static getLeagueGameProcessNames(): string[] {
+    if (process.platform === 'darwin') {
+      // macOS process names
+      return ['League Of Legends', 'League of Legends'];
+    } else {
+      // Windows process names (with and without .exe, various capitalizations)
+      return [
+        'League Of Legends.exe',
+        'League Of Legends',
+        'League of Legends.exe',
+        'League of Legends',
+        'league of legends.exe',
+        'league of legends'
+      ];
+    }
+  }
+
+  /**
+   * Get primary League Game process name (for backward compatibility)
    */
   static getLeagueGameProcessName(): string {
-    return process.platform === 'darwin' ? 'League Of Legends' : 'League Of Legends';
+    return process.platform === 'darwin' ? 'League Of Legends' : 'League Of Legends.exe';
   }
 
   /**
