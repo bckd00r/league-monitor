@@ -156,9 +156,9 @@ async function main() {
   let lastRestartRequestTime: number = 0;
   const restartRequestCooldown: number = 60 * 1000; // 1 minute cooldown between restart requests when game closes
 
-  // Also track for 8-minute check when game is running
+  // Also track for 4-minute check when game is running
   let lastGameRunningCheckTime: number = 0;
-  const gameRunningRestartCooldown: number = 5 * 60 * 1000; // 5 minutes cooldown between restart requests when game is running
+  const gameRunningRestartCooldown: number = 2 * 60 * 1000; // 5 minutes cooldown between restart requests when game is running
 
   // Check game process every 30 seconds
   // If game was running 30 seconds ago but is now closed, restart both clients
@@ -213,10 +213,10 @@ async function main() {
     }
   }, gameCheckInterval);
 
-  // Also check game process every 8 minutes for restart request when game is running
-  const gameRunningCheckInterval = 8 * 60 * 1000; // 8 minutes in milliseconds
+  // Also check game process every 4 minutes for restart request when game is running
+  const gameRunningCheckInterval = 4 * 60 * 1000; // 4 minutes in milliseconds
 
-  // Every 8 minutes: Check if game is running and request restart (if game keeps running)
+  // Every 4 minutes: Check if game is running and request restart (if game keeps running)
   setInterval(async () => {
     if (!sessionClient.connected() || !sessionClient.getSessionToken()) {
       return; // Not connected yet, skip check
@@ -235,7 +235,7 @@ async function main() {
         const timeSinceLastRequest = now - lastGameRunningCheckTime;
         
         if (timeSinceLastRequest >= gameRunningRestartCooldown) {
-          logger.info('League of Legends game is running (8 minute check), requesting restart from controller...');
+          logger.info('League of Legends game is running (4 minute check), requesting restart from controller...');
           sessionClient.requestRestartFromController();
           lastGameRunningCheckTime = now;
         } else {
@@ -264,7 +264,7 @@ async function main() {
   logger.success('Follower is running!');
   logger.info('Waiting for 8+ process detection from controller...');
   logger.info('Game process check: Every 30 seconds (if game closes, will request restart)');
-  logger.info('Game process check: Every 8 minutes (if game is running, will request restart)');
+  logger.info('Game process check: Every 4 minutes (if game is running, will request restart)');
   logger.info('Press Ctrl+C to stop');
 }
 
