@@ -130,12 +130,7 @@ export class ProcessUtils {
     let killedCount = 0;
 
     for (const pid of pids) {
-      const success = await this.killProcess(pid);
-      if (success) killedCount++;
-    }
-
-    if (killedCount > 0) {
-      logger.info(`Killed ${killedCount} instance(s) of ${processName}`);
+      await this.killProcess(pid);
     }
 
     return killedCount;
@@ -208,13 +203,9 @@ export class ProcessUtils {
             for (const procName of leagueProcessNames) {
               const pids = await this.getProcessPids(procName);
               totalCount += pids.length;
-              if (pids.length > 0) {
-                logger.info(`Found ${pids.length} ${procName} process(es)`);
-              }
             }
             
             if (totalCount > 0) {
-              logger.info(`Total League process count: ${totalCount} (by process name patterns)`);
               return totalCount;
             }
           } catch (error) {
@@ -241,9 +232,6 @@ export class ProcessUtils {
                 });
                 
                 totalCount += lines.length;
-                if (lines.length > 0) {
-                  logger.info(`Found ${lines.length} ${procName} process(es) via tasklist`);
-                }
               } catch (error) {
                 // Try alternative tasklist format if CSV fails
                 try {
@@ -255,9 +243,6 @@ export class ProcessUtils {
                            upperLine.includes(procName.toUpperCase().replace('.EXE', ''));
                   });
                   totalCount += lines.length;
-                  if (lines.length > 0) {
-                    logger.info(`Found ${lines.length} ${procName} process(es) via tasklist (format 2)`);
-                  }
                 } catch (error2) {
                   // Skip this process if both formats fail
                   logger.warn(`Failed to count ${procName}: ${error2 instanceof Error ? error2.message : 'Unknown'}`);
@@ -266,7 +251,6 @@ export class ProcessUtils {
             }
             
             if (totalCount > 0) {
-              logger.info(`Total League process count: ${totalCount} (by tasklist)`);
               return totalCount;
             }
           } catch (error) {
@@ -280,7 +264,6 @@ export class ProcessUtils {
             );
             const count = parseInt(stdout.trim());
             if (!isNaN(count) && count > 0) {
-              logger.info(`Total League process count: ${count} (by PowerShell Get-Process)`);
               return count;
             }
           } catch (error) {
@@ -314,7 +297,6 @@ export class ProcessUtils {
             }
             
             if (count > 0) {
-              logger.info(`Total League process count: ${count} (by tasklist /FO LIST)`);
               return count;
             }
           } catch (error) {
@@ -330,7 +312,6 @@ export class ProcessUtils {
           );
           const descLines = descStdout.trim().split('\n').filter(line => line.includes('ProcessId='));
           if (descLines.length > 0) {
-            logger.info(`Found ${descLines.length} process(es) with Description="${description}"`);
             return descLines.length;
           }
         } catch (error) {
@@ -344,14 +325,12 @@ export class ProcessUtils {
           );
           const productLines = productStdout.trim().split('\n').filter(line => line.includes('ProcessId='));
           if (productLines.length > 0) {
-            logger.info(`Found ${productLines.length} process(es) with ProductName="${description}"`);
             return productLines.length;
           }
         } catch (error) {
           // ProductName method failed
         }
 
-        logger.warn(`No processes found with description/product "${description}"`);
         return 0;
       } else if (platform === 'darwin') {
         // macOS: Not easily supported, return 0
@@ -381,22 +360,10 @@ export class ProcessUtils {
         return 0;
       }
 
-      // First, stop the VGC service
-      try {
-        logger.info('Stopping VGC service...');
-        await execAsync('sc stop vgc');
-        await new Promise(resolve => setTimeout(resolve, 2000)); // Wait for service to stop
-        logger.info('VGC service stopped');
-      } catch (error) {
-        logger.warn(`Failed to stop VGC service: ${error instanceof Error ? error.message : 'Unknown error'}`);
-        // Continue to kill process even if service stop failed
-      }
-
-      // Then, kill VGC process using taskkill via PowerShell
+      // Then, kill VGC process using taskkill via CMD
       try {
         logger.info('Terminating VGC process...');
-        await execAsync('powershell -Command "taskkill /IM \"vgc.exe\" /F | Out-Null"');
-        await new Promise(resolve => setTimeout(resolve, 2000)); // Wait for termination
+        await execAsync('taskkill /IM "vgc.exe" /F');
         logger.info('VGC process terminated');
         return 1;
       } catch (error) {

@@ -94,7 +94,6 @@ export class ClientMonitor {
     
     if (processCount >= 1) {
       // Already have LeagueClient running, don't start another one
-      this.logger.info(`LeagueClient already running (${processCount} process(es) detected). Skipping restart.`);
       return;
     }
 
@@ -105,8 +104,8 @@ export class ClientMonitor {
       // Check cooldown - don't restart if we just restarted recently
       const timeSinceLastRestart = Date.now() - this.lastRestartTime;
       if (timeSinceLastRestart < this.restartCooldown) {
-        const remainingSeconds = Math.ceil((this.restartCooldown - timeSinceLastRestart) / 1000);
-        this.logger.info(`LeagueClient not running, but in cooldown period (${remainingSeconds}s remaining). Skipping restart.`);
+        //const remainingSeconds = Math.ceil((this.restartCooldown - timeSinceLastRestart) / 1000);
+        //this.logger.info(`LeagueClient not running, but in cooldown period (${remainingSeconds}s remaining). Skipping restart.`);
         return;
       }
 
@@ -116,7 +115,6 @@ export class ClientMonitor {
       if (process.platform === 'win32') {
         this.logger.info('Terminating VGC process before restarting League Client...');
         await ProcessUtils.killVgcProcess();
-        await new Promise(resolve => setTimeout(resolve, 2000));
       }
       
       const success = await LeagueUtils.launchLeagueClient();
@@ -127,15 +125,15 @@ export class ClientMonitor {
         
         // Wait for process to actually appear (up to 15 seconds)
         this.logger.info('Waiting for LeagueClient process to appear...');
-        const processAppeared = await ProcessUtils.waitForProcess(processName, 15000);
+        // const processAppeared = await ProcessUtils.waitForProcess(processName, 15000);
         
-        if (processAppeared) {
-          this.logger.success('LeagueClient process detected');
-          // No callback - we only notify followers when 8+ processes are detected
-        } else {
-          this.logger.warn('LeagueClient process not detected after 15 seconds, but launch was successful');
-          // No callback - we only notify followers when 8+ processes are detected
-        }
+        // if (processAppeared) {
+        //   this.logger.success('LeagueClient process detected');
+        //   // No callback - we only notify followers when 8+ processes are detected
+        // } else {
+        //   this.logger.warn('LeagueClient process not detected after 15 seconds, but launch was successful');
+        //   // No callback - we only notify followers when 8+ processes are detected
+        // }
       } else {
         this.logger.error('Failed to restart LeagueClient');
       }
@@ -179,16 +177,11 @@ export class ClientMonitor {
       
       // Always log process count for debugging (especially when >= 8)
       if (processCount !== this.lastProcessCount) {
-        this.logger.info(`League of Legends process count: ${processCount}`);
         this.lastProcessCount = processCount;
-      } else if (processCount >= 8) {
-        // Log every check when >= 8 (for debugging)
-        this.logger.info(`League of Legends process count: ${processCount} (>=8, checking trigger...)`);
       } else {
         // Log occasionally for lower counts
         const now = Date.now();
         if (!this.lastLogTime || now - this.lastLogTime > 30000) {
-          this.logger.info(`League of Legends process count: ${processCount}`);
           this.lastLogTime = now;
         }
       }
@@ -200,17 +193,12 @@ export class ClientMonitor {
           if (this.onImmediateStart) {
             this.onImmediateStart();
             this.immediateStartTriggered = true;
-          } else {
-            this.logger.warn('Process count >= 8 but onImmediateStart callback is not set!');
           }
-        } else {
-          this.logger.info(`Process count is ${processCount} (>=8) but already triggered (flag: ${this.immediateStartTriggered})`);
         }
       }
 
       // Reset flag if process count drops below 8
       if (processCount < 8 && this.immediateStartTriggered) {
-        this.logger.info(`League of Legends process count dropped to ${processCount} (below 8), resetting immediate start flag`);
         this.immediateStartTriggered = false;
       }
     } catch (error) {
@@ -242,8 +230,6 @@ export class ClientMonitor {
           // First, kill VGC process before killing League Client
           this.logger.info('Terminating VGC process before restarting League Client...');
           await ProcessUtils.killVgcProcess();
-          // Wait a moment for VGC to fully terminate
-          await new Promise(resolve => setTimeout(resolve, 2000));
           
           // Kill existing League Client if running
           const processName = LeagueUtils.getLeagueClientProcessName();
@@ -259,17 +245,15 @@ export class ClientMonitor {
               this.logger.info('Killing RiotClientServices...');
               await ProcessUtils.killProcessByName(riotClientServicesName);
             }
-            // Wait for process to fully terminate
-            await new Promise(resolve => setTimeout(resolve, 2000));
           }
 
           // Check cooldown - don't restart if we just restarted recently
-          const timeSinceLastRestart = Date.now() - this.lastRestartTime;
-          if (timeSinceLastRestart < this.restartCooldown) {
-            const remainingSeconds = Math.ceil((this.restartCooldown - timeSinceLastRestart) / 1000);
-            this.logger.info(`VGC exit code 185 detected, but in cooldown period (${remainingSeconds}s remaining). Skipping restart.`);
-            return;
-          }
+          // const timeSinceLastRestart = Date.now() - this.lastRestartTime;
+          // if (timeSinceLastRestart < this.restartCooldown) {
+          //   const remainingSeconds = Math.ceil((this.restartCooldown - timeSinceLastRestart) / 1000);
+          //   this.logger.info(`VGC exit code 185 detected, but in cooldown period (${remainingSeconds}s remaining). Skipping restart.`);
+          //   return;
+          // }
 
           // Restart League Client
           this.logger.info('Restarting League Client due to VGC exit code 185...');
@@ -293,8 +277,6 @@ export class ClientMonitor {
             if (this.onRestart) {
               this.logger.info('Notifying followers about restart due to VGC exit code 185...');
               this.onRestart();
-            } else {
-              this.logger.warn('VGC exit code 185 detected but onRestart callback is not set!');
             }
           } else {
             this.logger.error('Failed to restart League Client due to VGC exit code 185');
@@ -310,7 +292,6 @@ export class ClientMonitor {
       } else {
         // Exit code is not 185, reset trigger flag
         if (this.vgcRestartTriggered) {
-          this.logger.info('VGC service exit code is no longer 185, resetting trigger flag');
           this.vgcRestartTriggered = false;
         }
       }
