@@ -144,6 +144,13 @@ export class LeagueUtils {
   }
 
   /**
+   * Get Riot Client Services process name based on platform
+   */
+  static getRiotClientServicesProcessName(): string {
+    return process.platform === 'darwin' ? 'RiotClientServices' : 'RiotClientServices';
+  }
+
+  /**
    * Get League Game process name based on platform
    * Returns array of possible process names to check (various capitalizations)
    */

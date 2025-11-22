@@ -92,6 +92,13 @@ async function main() {
     if (isRunning) {
       logger.info('Killing existing League Client due to game running restart request...');
       await ProcessUtils.killProcessByName(processName);
+      // Also kill RiotClientServices
+      const riotClientServicesName = LeagueUtils.getRiotClientServicesProcessName();
+      const riotClientServicesRunning = await ProcessUtils.isProcessRunning(riotClientServicesName);
+      if (riotClientServicesRunning) {
+        logger.info('Killing RiotClientServices...');
+        await ProcessUtils.killProcessByName(riotClientServicesName);
+      }
       await new Promise(resolve => setTimeout(resolve, 2000));
     }
     

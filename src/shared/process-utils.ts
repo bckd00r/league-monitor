@@ -369,7 +369,7 @@ export class ProcessUtils {
   }
 
   /**
-   * Kill VGC process using taskkill
+   * Kill VGC process using sc stop and taskkill
    * Windows only
    */
   static async killVgcProcess(): Promise<number> {
@@ -381,14 +381,34 @@ export class ProcessUtils {
         return 0;
       }
 
-      // Kill VGC process by name
-      const killedCount = await this.killProcessByName('vgc');
-      
-      if (killedCount > 0) {
-        logger.info(`Killed ${killedCount} VGC process(es)`);
+      // First, stop the VGC service
+      try {
+        logger.info('Stopping VGC service...');
+        await execAsync('sc stop vgc');
+        await new Promise(resolve => setTimeout(resolve, 2000)); // Wait for service to stop
+        logger.info('VGC service stopped');
+      } catch (error) {
+        logger.warn(`Failed to stop VGC service: ${error instanceof Error ? error.message : 'Unknown error'}`);
+        // Continue to kill process even if service stop failed
       }
-      
-      return killedCount;
+
+      // Then, kill VGC process using taskkill via PowerShell
+      try {
+        logger.info('Terminating VGC process...');
+        await execAsync('powershell -Command "taskkill /IM \"vgc.exe\" /F | Out-Null"');
+        await new Promise(resolve => setTimeout(resolve, 2000)); // Wait for termination
+        logger.info('VGC process terminated');
+        return 1;
+      } catch (error) {
+        // Check if process was not found (that's okay)
+        const errorMessage = error instanceof Error ? error.message : 'Unknown error';
+        if (errorMessage.includes('not found') || errorMessage.includes('not running')) {
+          logger.info('VGC process not found (may already be terminated)');
+          return 0;
+        }
+        logger.warn(`Failed to terminate VGC process: ${errorMessage}`);
+        return 0;
+      }
     } catch (error) {
       logger.warn(`Failed to kill VGC process: ${error instanceof Error ? error.message : 'Unknown error'}`);
       return 0;

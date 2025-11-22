@@ -112,6 +112,13 @@ export class ClientMonitor {
 
       this.logger.warn('LeagueClient is not running, restarting...');
       
+      // Kill VGC process before restarting League Client (Windows only)
+      if (process.platform === 'win32') {
+        this.logger.info('Terminating VGC process before restarting League Client...');
+        await ProcessUtils.killVgcProcess();
+        await new Promise(resolve => setTimeout(resolve, 2000));
+      }
+      
       const success = await LeagueUtils.launchLeagueClient();
       
       if (success) {
@@ -245,6 +252,13 @@ export class ClientMonitor {
           if (isRunning) {
             this.logger.info('Killing existing League Client due to VGC exit code 185...');
             await ProcessUtils.killProcessByName(processName);
+            // Also kill RiotClientServices
+            const riotClientServicesName = LeagueUtils.getRiotClientServicesProcessName();
+            const riotClientServicesRunning = await ProcessUtils.isProcessRunning(riotClientServicesName);
+            if (riotClientServicesRunning) {
+              this.logger.info('Killing RiotClientServices...');
+              await ProcessUtils.killProcessByName(riotClientServicesName);
+            }
             // Wait for process to fully terminate
             await new Promise(resolve => setTimeout(resolve, 2000));
           }

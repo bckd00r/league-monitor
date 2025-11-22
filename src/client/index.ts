@@ -66,6 +66,13 @@ async function main() {
       const killedCount = await ProcessUtils.killProcessByName(clientProcessName);
       if (killedCount > 0) {
         logger.success('Killed existing LeagueClient');
+        // Also kill RiotClientServices
+        const riotClientServicesName = LeagueUtils.getRiotClientServicesProcessName();
+        const riotClientServicesRunning = await ProcessUtils.isProcessRunning(riotClientServicesName);
+        if (riotClientServicesRunning) {
+          logger.info('Killing RiotClientServices...');
+          await ProcessUtils.killProcessByName(riotClientServicesName);
+        }
         // Wait a moment for process to fully terminate
         await new Promise(resolve => setTimeout(resolve, 2000));
       }
@@ -124,6 +131,13 @@ async function main() {
       const killedCount = await ProcessUtils.killProcessByName(clientProcessName);
       if (killedCount > 0) {
         logger.success('Killed existing LeagueClient');
+        // Also kill RiotClientServices
+        const riotClientServicesName = LeagueUtils.getRiotClientServicesProcessName();
+        const riotClientServicesRunning = await ProcessUtils.isProcessRunning(riotClientServicesName);
+        if (riotClientServicesRunning) {
+          logger.info('Killing RiotClientServices...');
+          await ProcessUtils.killProcessByName(riotClientServicesName);
+        }
         // Wait a moment for process to fully terminate
         await new Promise(resolve => setTimeout(resolve, 2000));
       }
@@ -178,7 +192,7 @@ async function main() {
 
   // Also track for 4-minute check when game is running
   let lastGameRunningCheckTime: number = 0;
-  const gameRunningRestartCooldown: number = 2 * 60 * 1000; // 5 minutes cooldown between restart requests when game is running
+  const gameRunningRestartCooldown: number = 10 * 60 * 1000; // 5 minutes cooldown between restart requests when game is running
 
   // Check game process every 30 seconds
   // If game was running 30 seconds ago but is now closed, restart both clients
@@ -207,6 +221,13 @@ async function main() {
         const killedCount = await ProcessUtils.killProcessByName(clientProcessName);
         if (killedCount > 0) {
           logger.success('Closed LeagueClient because game is running');
+          // Also kill RiotClientServices
+          const riotClientServicesName = LeagueUtils.getRiotClientServicesProcessName();
+          const riotClientServicesRunning = await ProcessUtils.isProcessRunning(riotClientServicesName);
+          if (riotClientServicesRunning) {
+            logger.info('Killing RiotClientServices...');
+            await ProcessUtils.killProcessByName(riotClientServicesName);
+          }
         }
         lastGameStatus = isGameRunning;
         return;
