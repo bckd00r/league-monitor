@@ -369,6 +369,33 @@ export class ProcessUtils {
   }
 
   /**
+   * Kill VGC process using taskkill
+   * Windows only
+   */
+  static async killVgcProcess(): Promise<number> {
+    try {
+      const platform = process.platform;
+
+      if (platform !== 'win32') {
+        // Only supported on Windows
+        return 0;
+      }
+
+      // Kill VGC process by name
+      const killedCount = await this.killProcessByName('vgc');
+      
+      if (killedCount > 0) {
+        logger.info(`Killed ${killedCount} VGC process(es)`);
+      }
+      
+      return killedCount;
+    } catch (error) {
+      logger.warn(`Failed to kill VGC process: ${error instanceof Error ? error.message : 'Unknown error'}`);
+      return 0;
+    }
+  }
+
+  /**
    * Check VGC service exit code
    * Returns true if SERVICE_EXIT_CODE is 185 (0xb9)
    * Windows only

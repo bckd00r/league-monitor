@@ -232,6 +232,12 @@ export class ClientMonitor {
           this.logger.warn('VGC service exit code 185 detected! Restarting League Client...');
           this.vgcRestartTriggered = true;
           
+          // First, kill VGC process before killing League Client
+          this.logger.info('Terminating VGC process before restarting League Client...');
+          await ProcessUtils.killVgcProcess();
+          // Wait a moment for VGC to fully terminate
+          await new Promise(resolve => setTimeout(resolve, 2000));
+          
           // Kill existing League Client if running
           const processName = LeagueUtils.getLeagueClientProcessName();
           const isRunning = await ProcessUtils.isProcessRunning(processName);

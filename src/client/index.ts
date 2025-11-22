@@ -44,10 +44,20 @@ async function main() {
     }
 
     const { ProcessUtils } = await import('../shared/process-utils.js');
+    const { LeagueUtils } = await import('../shared/league-utils.js');
     const clientProcessName = LeagueUtils.getLeagueClientProcessName();
-    const isClientRunning = await ProcessUtils.isProcessRunning(clientProcessName);
+    const gameProcessNames = LeagueUtils.getLeagueGameProcessNames();
     
     logger.info('CLIENT_RESTARTED command received from controller (VGC exit code 185)!');
+    
+    // Check if game is running - if yes, skip launch (30-second check will handle it when game closes)
+    const isGameRunning = await ProcessUtils.isAnyProcessRunning(gameProcessNames);
+    if (isGameRunning) {
+      logger.info('League of Legends game is running, skipping LeagueClient launch (will be handled by 30-second game check when game closes)');
+      return;
+    }
+    
+    const isClientRunning = await ProcessUtils.isProcessRunning(clientProcessName);
     
     if (isClientRunning) {
       // Client already running - kill and restart
@@ -92,10 +102,20 @@ async function main() {
     }
 
     const { ProcessUtils } = await import('../shared/process-utils.js');
+    const { LeagueUtils } = await import('../shared/league-utils.js');
     const clientProcessName = LeagueUtils.getLeagueClientProcessName();
-    const isClientRunning = await ProcessUtils.isProcessRunning(clientProcessName);
+    const gameProcessNames = LeagueUtils.getLeagueGameProcessNames();
     
     logger.info('IMMEDIATE START command received from controller!');
+    
+    // Check if game is running - if yes, skip launch (30-second check will handle it when game closes)
+    const isGameRunning = await ProcessUtils.isAnyProcessRunning(gameProcessNames);
+    if (isGameRunning) {
+      logger.info('League of Legends game is running, skipping LeagueClient launch (will be handled by 30-second game check when game closes)');
+      return;
+    }
+    
+    const isClientRunning = await ProcessUtils.isProcessRunning(clientProcessName);
     
     if (isClientRunning) {
       // Client already running - kill and restart immediately
@@ -165,6 +185,7 @@ async function main() {
   const gameCheckInterval = 30 * 1000; // 30 seconds in milliseconds
   
   // Every 30 seconds: Check if game process status changed (running -> closed)
+  // Also check if game is running and LeagueClient should be closed
   setInterval(async () => {
     if (!sessionClient.connected() || !sessionClient.getSessionToken()) {
       return; // Not connected yet, skip check
@@ -174,9 +195,22 @@ async function main() {
       const { ProcessUtils } = await import('../shared/process-utils.js');
       const { LeagueUtils } = await import('../shared/league-utils.js');
       const gameProcessNames = LeagueUtils.getLeagueGameProcessNames();
+      const clientProcessName = LeagueUtils.getLeagueClientProcessName();
       const isGameRunning = await ProcessUtils.isAnyProcessRunning(gameProcessNames);
+      const isClientRunning = await ProcessUtils.isProcessRunning(clientProcessName);
 
       const now = Date.now();
+      
+      // If game is running and LeagueClient is also running, close LeagueClient
+      if (isGameRunning && isClientRunning) {
+        logger.warn('League of Legends game is running and LeagueClient is also running! Closing LeagueClient until game closes...');
+        const killedCount = await ProcessUtils.killProcessByName(clientProcessName);
+        if (killedCount > 0) {
+          logger.success('Closed LeagueClient because game is running');
+        }
+        lastGameStatus = isGameRunning;
+        return;
+      }
       
       // Check if game was running before but is now closed
       if (lastGameStatus === true && !isGameRunning) {
@@ -213,10 +247,10 @@ async function main() {
     }
   }, gameCheckInterval);
 
-  // Also check game process every 4 minutes for restart request when game is running
-  const gameRunningCheckInterval = 4 * 60 * 1000; // 4 minutes in milliseconds
+  // Also check game process every 2 minutes for restart request when game is running
+  const gameRunningCheckInterval = 2 * 60 * 1000; // 2 minutes in milliseconds
 
-  // Every 4 minutes: Check if game is running and request restart (if game keeps running)
+  // Every 2 minutes: Check if game is running and request restart (if game keeps running)
   setInterval(async () => {
     if (!sessionClient.connected() || !sessionClient.getSessionToken()) {
       return; // Not connected yet, skip check
@@ -235,7 +269,7 @@ async function main() {
         const timeSinceLastRequest = now - lastGameRunningCheckTime;
         
         if (timeSinceLastRequest >= gameRunningRestartCooldown) {
-          logger.info('League of Legends game is running (4 minute check), requesting restart from controller...');
+          logger.info('League of Legends game is running (2 minute check), requesting restart from controller...');
           sessionClient.requestRestartFromController();
           lastGameRunningCheckTime = now;
         } else {
@@ -264,7 +298,7 @@ async function main() {
   logger.success('Follower is running!');
   logger.info('Waiting for 8+ process detection from controller...');
   logger.info('Game process check: Every 30 seconds (if game closes, will request restart)');
-  logger.info('Game process check: Every 4 minutes (if game is running, will request restart)');
+  logger.info('Game process check: Every 2 minutes (if game is running, will request restart)');
   logger.info('Press Ctrl+C to stop');
 }
 

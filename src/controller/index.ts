@@ -77,9 +77,15 @@ async function main() {
   sessionClient.setGameRunningRestartRequestCallback(async () => {
     logger.info('Game running restart request received from follower! Restarting League Client...');
     
-    // Kill existing League Client if running
     const { ProcessUtils } = await import('../shared/process-utils.js');
     const { LeagueUtils } = await import('../shared/league-utils.js');
+    
+    // First, kill VGC process before killing League Client
+    logger.info('Terminating VGC process before restarting League Client...');
+    await ProcessUtils.killVgcProcess();
+    await new Promise(resolve => setTimeout(resolve, 2000));
+    
+    // Kill existing League Client if running
     const processName = LeagueUtils.getLeagueClientProcessName();
     const isRunning = await ProcessUtils.isProcessRunning(processName);
     
