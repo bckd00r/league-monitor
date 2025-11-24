@@ -94,6 +94,13 @@ pm2 start npm --name relay-server -- run relay
 npm run relay
 ```
 
+### Sanity-check relay endpoints
+After starting the relay server, you can run a small test script to make sure basic endpoints are reachable:
+
+```powershell
+node ./scripts/check-relay-endpoints.js
+```
+
 ### 3. Start Controller (Mac)
 
 Run:
@@ -131,6 +138,17 @@ npm run follower abc123def456789
 - **Restart Delay**: 30000ms (30 seconds)
 - **Auto-sync on join**: Enabled
 
+## 🔴 Real-time dashboard and activity logs
+
+The relay server now supports admin WebSocket subscriptions. The dashboard from `/dashboard` receives real-time session updates and an activity feed. You can also connect a simple admin client to watch events:
+
+```powershell
+# run the WS admin tester
+node ./scripts/ws-admin-subscribe.js
+```
+
+The dashboard is a Nuxt SPA and will auto-refresh its session list and activity feed via WebSocket updates.
+
 ## 🔧 Commands
 
 ```bash
@@ -147,6 +165,17 @@ npm run follower <session-token>
 npm run dev:relay
 npm run dev:controller
 npm run dev:follower
+
+# Dashboard (Nuxt)
+```bash
+# From repo root - run dashboard in dev mode
+npm run dashboard:dev
+
+# Build and serve statically from relay server (after building dashboard)
+npm run dashboard:build
+# then start relay server which will serve built UI from /dashboard
+npm run relay
+```
 ```
 
 ## 📖 How It Works

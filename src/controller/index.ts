@@ -82,6 +82,16 @@ async function main() {
 
     logger.info('Terminating VGC process...');
     await ProcessUtils.killVgcProcess();
+    
+    // Wait for VGC process to close
+    logger.info('Waiting for VGC.exe to terminate...');
+    const vgcClosed = await ProcessUtils.waitForVgcProcessToClose(120000); // 2 minutes timeout
+    
+    if (vgcClosed) {
+      logger.success('VGC process closed. Now restarting League Client...');
+    } else {
+      logger.warn('VGC process did not close within timeout. Proceeding with restart anyway...');
+    }
 
     // Kill existing League Client if running
     const processName = LeagueUtils.getLeagueClientProcessName();

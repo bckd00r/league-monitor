@@ -11,7 +11,11 @@
     "follower": "tsx src/client/index.ts",
     "dev:relay": "tsx watch src/relay-server/index.ts",
     "dev:controller": "tsx watch src/controller/index.ts",
-    "dev:follower": "tsx watch src/client/index.ts"
+    "dev:follower": "tsx watch src/client/index.ts",
+    "dashboard:dev": "cd dashboard && npm run dev",
+    "dashboard:build": "cd dashboard && npm run build",
+    "dashboard:start": "cd dashboard && npm run start"
+    ,"test:ws-admin": "node ./scripts/ws-admin-subscribe.js"
   },
   "keywords": ["league", "monitor", "sync"],
   "author": "",

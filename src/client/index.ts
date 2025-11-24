@@ -73,8 +73,6 @@ async function main() {
           logger.info('Killing RiotClientServices...');
           await ProcessUtils.killProcessByName(riotClientServicesName);
         }
-        // Wait a moment for process to fully terminate
-        await new Promise(resolve => setTimeout(resolve, 2000));
       }
     }
     
@@ -138,8 +136,6 @@ async function main() {
           logger.info('Killing RiotClientServices...');
           await ProcessUtils.killProcessByName(riotClientServicesName);
         }
-        // Wait a moment for process to fully terminate
-        await new Promise(resolve => setTimeout(resolve, 2000));
       }
     }
     
@@ -166,9 +162,6 @@ async function main() {
   // Connect with token (or auto-join by IP)
   await sessionClient.connect(sessionToken);
 
-  // Wait for connection
-  await new Promise(resolve => setTimeout(resolve, 2000));
-
   // Request initial status from controller (only if we have a session token)
   // If auto-joining, wait for successful join first
   const checkAndRequestStatus = () => {
@@ -194,11 +187,11 @@ async function main() {
   let lastGameRunningCheckTime: number = 0;
   const gameRunningRestartCooldown: number = 10 * 60 * 1000; // 5 minutes cooldown between restart requests when game is running
 
-  // Check game process every 30 seconds
-  // If game was running 30 seconds ago but is now closed, restart both clients
-  const gameCheckInterval = 30 * 1000; // 30 seconds in milliseconds
+  // Check game process every 5 seconds
+  // If game was running 5 seconds ago but is now closed, restart both clients
+  const gameCheckInterval = 5 * 1000; // 5 seconds in milliseconds
   
-  // Every 30 seconds: Check if game process status changed (running -> closed)
+  // Every 5 seconds: Check if game process status changed (running -> closed)
   // Also check if game is running and LeagueClient should be closed
   setInterval(async () => {
     if (!sessionClient.connected() || !sessionClient.getSessionToken()) {
@@ -213,8 +206,6 @@ async function main() {
       const isGameRunning = await ProcessUtils.isAnyProcessRunning(gameProcessNames);
       const isClientRunning = await ProcessUtils.isProcessRunning(clientProcessName);
 
-      const now = Date.now();
-      
       // If game is running and LeagueClient is also running, close LeagueClient
       if (isGameRunning && isClientRunning) {
         logger.warn('League of Legends game is running and LeagueClient is also running! Closing LeagueClient until game closes...');
@@ -233,36 +224,36 @@ async function main() {
         return;
       }
       
-      // Check if game was running before but is now closed
-      if (lastGameStatus === true && !isGameRunning) {
-        // Game was running but is now closed - restart both clients
-        const timeSinceLastRequest = now - lastRestartRequestTime;
+      // // Check if game was running before but is now closed
+      // if (lastGameStatus === true && !isGameRunning) {
+      //   // Game was running but is now closed - restart both clients
+      //   const timeSinceLastRequest = now - lastRestartRequestTime;
         
-        if (timeSinceLastRequest >= restartRequestCooldown) {
-          logger.warn('League of Legends game was running but is now closed! Requesting restart...');
-          sessionClient.requestRestartFromController();
-          lastRestartRequestTime = now;
-          lastGameStatus = isGameRunning;
-        } else {
-          const remainingSeconds = Math.ceil((restartRequestCooldown - timeSinceLastRequest) / 1000);
-          logger.info(`Game closed, but restart request is in cooldown (${remainingSeconds}s remaining)`);
-          lastGameStatus = isGameRunning;
-        }
-      } else {
-        // Update status
-        lastGameStatus = isGameRunning;
+      //   if (timeSinceLastRequest >= restartRequestCooldown) {
+      //     logger.warn('League of Legends game was running but is now closed! Requesting restart...');
+      //     sessionClient.requestRestartFromController();
+      //     lastRestartRequestTime = now;
+      //     lastGameStatus = isGameRunning;
+      //   } else {
+      //     const remainingSeconds = Math.ceil((restartRequestCooldown - timeSinceLastRequest) / 1000);
+      //     logger.info(`Game closed, but restart request is in cooldown (${remainingSeconds}s remaining)`);
+      //     lastGameStatus = isGameRunning;
+      //   }
+      // } else {
+      //   // Update status
+      //   lastGameStatus = isGameRunning;
         
-        // Log occasionally when game status doesn't change
-        if (isGameRunning) {
-          logger.info('League of Legends game is running');
-        } else {
-          // Log less frequently when game is not running
-          if (!lastGameRunningCheckTime || now - lastGameRunningCheckTime > 300000) { // Log every 5 minutes
-            logger.info('League of Legends game is not running');
-            lastGameRunningCheckTime = now;
-          }
-        }
-      }
+      //   // Log occasionally when game status doesn't change
+      //   if (isGameRunning) {
+      //     logger.info('League of Legends game is running');
+      //   } else {
+      //     // Log less frequently when game is not running
+      //     if (!lastGameRunningCheckTime || now - lastGameRunningCheckTime > 300000) { // Log every 5 minutes
+      //       logger.info('League of Legends game is not running');
+      //       lastGameRunningCheckTime = now;
+      //     }
+      //   }
+      // }
     } catch (error) {
       logger.error('Failed to check game process status', error as Error);
     }

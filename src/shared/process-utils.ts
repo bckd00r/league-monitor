@@ -460,4 +460,35 @@ export class ProcessUtils {
       return false;
     }
   }
+
+  /**
+   * Wait for VGC process to close
+   * Returns true if process closed, false if timeout reached
+   * Windows only
+   */
+  static async waitForVgcProcessToClose(timeout: number = 120000): Promise<boolean> {
+    const startTime = Date.now();
+    const checkInterval = 2000; // Check every 2 seconds
+
+    while (Date.now() - startTime < timeout) {
+      const isVgcRunning = await this.isProcessRunning('vgc.exe');
+      
+      if (!isVgcRunning) {
+        const elapsedSeconds = Math.round((Date.now() - startTime) / 1000);
+        logger.success(`VGC process closed after ${elapsedSeconds} seconds`);
+        return true;
+      }
+
+      // Log progress every 10 seconds
+      const elapsedSeconds = Math.round((Date.now() - startTime) / 1000);
+      if (elapsedSeconds > 0 && elapsedSeconds % 10 === 0) {
+        logger.info(`VGC process still running... (${elapsedSeconds}s elapsed)`);
+      }
+
+      // Wait before next check
+      await new Promise(resolve => setTimeout(resolve, checkInterval));
+    }
+
+    return false;
+  }
 }

@@ -1,4 +1,5 @@
 import { Logger } from '../shared/logger.js';
+import EventEmitter from 'events';
 import crypto from 'crypto';
 
 interface ClientConnection {
@@ -18,6 +19,7 @@ interface Session {
 
 export class SessionManager {
   private logger: Logger;
+  private emitter: EventEmitter;
   private sessions: Map<string, Session> = new Map();
   private clientToSession: Map<string, string> = new Map();
   private ipToSession: Map<string, string> = new Map(); // IP -> Session Token
@@ -25,9 +27,64 @@ export class SessionManager {
 
   constructor() {
     this.logger = new Logger('SessionManager');
+    this.emitter = new EventEmitter();
     
     // Clean up old sessions every 5 minutes
     setInterval(() => this.cleanupOldSessions(), 5 * 60 * 1000);
+  }
+
+  /**
+   * Broadcast restart event to followers using a session token (admin/UI action)
+   */
+  broadcastRestartByToken(token: string): number {
+    const session = this.sessions.get(token);
+    if (!session) return 0;
+
+    this.logger.info(`Admin broadcast: Restart event for session: ${token}`);
+
+    let sentCount = 0;
+    session.followers.forEach((follower) => {
+      try {
+        follower.ws.send(JSON.stringify({
+          type: 'CLIENT_RESTARTED',
+          timestamp: Date.now(),
+          sessionToken: token
+        }));
+        sentCount++;
+      } catch (error) {
+        this.logger.error(`Failed to send to follower ${follower.clientId}`, error as Error);
+      }
+    });
+
+    this.logger.success(`Admin restart broadcast sent to ${sentCount} follower(s)`);
+    return sentCount;
+  }
+
+  /**
+   * Broadcast immediate start command to followers using a session token (admin/UI action)
+   */
+  broadcastImmediateStartByToken(token: string): number {
+    const session = this.sessions.get(token);
+    if (!session) return 0;
+
+    this.logger.info(`Admin broadcast: Immediate start for session: ${token}`);
+
+    let sentCount = 0;
+    session.followers.forEach((follower) => {
+      try {
+        follower.ws.send(JSON.stringify({
+          type: 'IMMEDIATE_START',
+          timestamp: Date.now(),
+          sessionToken: token
+        }));
+        sentCount++;
+      } catch (error) {
+        this.logger.error(`Failed to send immediate start to follower ${follower.clientId}`, error as Error);
+      }
+    });
+
+    this.logger.success(`Admin immediate start sent to ${sentCount} follower(s)`);
+    return sentCount;
   }
 
   /**
@@ -44,6 +101,8 @@ export class SessionManager {
 
     this.sessions.set(token, session);
     this.logger.success(`New session created: ${token}`);
+    this.emitter.emit('session_created', this.getSessionInfo(token));
+    this.emitter.emit('activity', { level: 'info', message: `New session created: ${token}`, timestamp: Date.now() });
     
     return token;
   }
@@ -79,9 +138,13 @@ export class SessionManager {
       }
       session.controller = connection;
       this.logger.info(`Controller joined session: ${token}`);
+      this.emitter.emit('session_updated', this.getSessionInfo(token));
+      this.emitter.emit('activity', { level: 'info', message: `Controller joined session: ${token}`, timestamp: Date.now() });
     } else {
       session.followers.set(clientId, connection);
       this.logger.info(`Follower ${clientId} joined session: ${token}`);
+      this.emitter.emit('session_updated', this.getSessionInfo(token));
+      this.emitter.emit('activity', { level: 'info', message: `Follower ${clientId} joined session: ${token}`, timestamp: Date.now() });
     }
 
     this.clientToSession.set(clientId, token);
@@ -101,9 +164,13 @@ export class SessionManager {
     if (session.controller?.clientId === clientId) {
       this.logger.info(`Controller disconnected from session: ${token}`);
       session.controller = undefined;
+      this.emitter.emit('session_updated', this.getSessionInfo(token));
+      this.emitter.emit('activity', { level: 'info', message: `Controller disconnected: ${clientId} (session ${token})`, timestamp: Date.now() });
     } else {
       session.followers.delete(clientId);
       this.logger.info(`Follower ${clientId} disconnected from session: ${token}`);
+      this.emitter.emit('session_updated', this.getSessionInfo(token));
+      this.emitter.emit('activity', { level: 'info', message: `Follower disconnected: ${clientId} (session ${token})`, timestamp: Date.now() });
     }
 
     this.clientToSession.delete(clientId);
@@ -113,6 +180,8 @@ export class SessionManager {
     if (!session.controller && session.followers.size === 0) {
       this.sessions.delete(token);
       this.logger.info(`Session ${token} removed (no clients)`);
+      this.emitter.emit('session_removed', token);
+      this.emitter.emit('activity', { level: 'info', message: `Session ${token} removed (no clients)`, timestamp: Date.now() });
     }
   }
 
@@ -128,10 +197,14 @@ export class SessionManager {
 
     if (session.controller?.clientId === clientId) {
       session.controller.lastHeartbeat = Date.now();
+      this.emitter.emit('session_updated', this.getSessionInfo(token));
+      this.emitter.emit('activity', { level: 'debug', message: `Heartbeat updated for controller ${clientId} in session ${token}`, timestamp: Date.now() });
     } else {
       const follower = session.followers.get(clientId);
       if (follower) {
         follower.lastHeartbeat = Date.now();
+        this.emitter.emit('session_updated', this.getSessionInfo(token));
+        this.emitter.emit('activity', { level: 'debug', message: `Heartbeat updated for follower ${clientId} in session ${token}`, timestamp: Date.now() });
       }
     }
   }
@@ -163,6 +236,7 @@ export class SessionManager {
     });
 
     this.logger.success(`Restart broadcast sent to ${sentCount} follower(s)`);
+    this.emitter.emit('activity', { level: 'info', message: `Restart broadcast from controller ${controllerClientId} for session ${token}`, timestamp: Date.now() });
     return sentCount;
   }
 
@@ -193,6 +267,7 @@ export class SessionManager {
     });
 
     this.logger.success(`Status sent to ${sentCount} follower(s)`);
+    this.emitter.emit('activity', { level: 'info', message: `Status update from controller ${controllerClientId} for session ${token}`, timestamp: Date.now(), status });
     return sentCount;
   }
 
@@ -213,6 +288,7 @@ export class SessionManager {
         fromClient: followerClientId
       }));
       this.logger.info(`Status request sent to controller for session: ${token}`);
+        this.emitter.emit('activity', { level: 'info', message: `Status request from follower ${followerClientId} forwarded to controller for session ${token}`, timestamp: Date.now() });
       return true;
     } catch (error) {
       this.logger.error('Failed to send status request', error as Error);
@@ -237,6 +313,7 @@ export class SessionManager {
         fromFollower: followerClientId
       }));
       this.logger.info(`Restart request forwarded from follower ${followerClientId} to controller for session: ${token}`);
+        this.emitter.emit('activity', { level: 'info', message: `Restart request forwarded from follower ${followerClientId} to controller for session ${token}`, timestamp: Date.now() });
       return true;
     } catch (error) {
       this.logger.error('Failed to forward restart request', error as Error);
@@ -271,6 +348,7 @@ export class SessionManager {
     });
 
     this.logger.success(`Immediate start command sent to ${sentCount} follower(s)`);
+    this.emitter.emit('activity', { level: 'info', message: `Immediate start broadcast from controller ${controllerClientId} for session ${token}`, timestamp: Date.now() });
     return sentCount;
   }
 
@@ -303,6 +381,11 @@ export class SessionManager {
       hasController: !!session.controller,
       followerCount: session.followers.size
     }));
+  }
+
+  // Admin subscriptions
+  on(event: 'session_created' | 'session_updated' | 'session_removed' | 'activity', fn: (payload: any) => void) {
+    this.emitter.on(event, fn);
   }
 
   /**

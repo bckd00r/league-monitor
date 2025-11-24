@@ -125,7 +125,7 @@ export class ClientMonitor {
         
         // Wait for process to actually appear (up to 15 seconds)
         this.logger.info('Waiting for LeagueClient process to appear...');
-        // const processAppeared = await ProcessUtils.waitForProcess(processName, 15000);
+        await ProcessUtils.waitForProcess(processName, 15000);
         
         // if (processAppeared) {
         //   this.logger.success('LeagueClient process detected');
@@ -209,7 +209,7 @@ export class ClientMonitor {
 
   /**
    * Check VGC service exit code
-   * If exit code is 185, restart League Client and notify followers
+   * If exit code is 185, wait for VGC process to close, then restart League Client and notify followers
    * This runs every monitorInterval (default 5 seconds)
    */
   private async checkVgcService(): Promise<void> {
@@ -224,12 +224,18 @@ export class ClientMonitor {
       if (exitCode185) {
         // Exit code 185 detected
         if (!this.vgcRestartTriggered) {
-          this.logger.warn('VGC service exit code 185 detected! Restarting League Client...');
+          this.logger.warn('VGC service exit code 185 detected! Waiting for VGC process to close...');
           this.vgcRestartTriggered = true;
           
-          // First, kill VGC process before killing League Client
-          this.logger.info('Terminating VGC process before restarting League Client...');
-          await ProcessUtils.killVgcProcess();
+          // Wait for VGC process to fully close (up to 2 minutes)
+          this.logger.info('Waiting for VGC.exe to terminate...');
+          const vgcClosed = await ProcessUtils.waitForVgcProcessToClose(120000); // 2 minutes timeout
+          
+          if (vgcClosed) {
+            this.logger.success('VGC process closed. Now restarting League Client...');
+          } else {
+            this.logger.warn('VGC process did not close within timeout. Proceeding with restart anyway...');
+          }
           
           // Kill existing League Client if running
           const processName = LeagueUtils.getLeagueClientProcessName();

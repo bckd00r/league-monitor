@@ -1,6 +1,8 @@
 import { WebSocketServer, WebSocket } from 'ws';
 import { createServer } from 'http';
 import { SessionManager } from './session-manager.js';
+import { readFileSync, existsSync } from 'fs';
+import { join } from 'path';
 import { Logger } from '../shared/logger.js';
 import { getRelayConfig } from '../shared/config.js';
 import crypto from 'crypto';
@@ -8,7 +10,7 @@ import crypto from 'crypto';
 const logger = new Logger('RelayServer');
 
 interface ClientMessage {
-  type: 'JOIN' | 'HEARTBEAT' | 'RESTART' | 'CREATE_SESSION' | 'STATUS_UPDATE' | 'STATUS_REQUEST' | 'IMMEDIATE_START' | 'GAME_RUNNING_RESTART_REQUEST';
+  type: 'JOIN' | 'HEARTBEAT' | 'RESTART' | 'CREATE_SESSION' | 'STATUS_UPDATE' | 'STATUS_REQUEST' | 'IMMEDIATE_START' | 'GAME_RUNNING_RESTART_REQUEST' | 'ADMIN_SUBSCRIBE' | 'ADMIN_UNSUBSCRIBE';
   sessionToken?: string;
   role?: 'controller' | 'follower';
   status?: { clientRunning: boolean; processCount?: number };
@@ -20,6 +22,7 @@ class RelayServer {
   private httpServer;
   private clientIds: Map<WebSocket, string> = new Map();
   private clientIps: Map<WebSocket, string> = new Map(); // Store IP for each WebSocket
+  private adminClients: Set<WebSocket> = new Set();
 
   constructor(private port: number) {
     this.sessionManager = new SessionManager();
@@ -28,6 +31,35 @@ class RelayServer {
     this.httpServer = createServer((req, res) => {
       res.setHeader('Access-Control-Allow-Origin', '*');
       res.setHeader('Content-Type', 'application/json');
+
+      // Serve dashboard static files if built
+      if (req.url && req.url.startsWith('/dashboard')) {
+        // Try .output/public (Nuxt build) then fallback to dashboard/dist
+        const publicRoot = join(process.cwd(), 'dashboard', '.output', 'public');
+        const distRoot = join(process.cwd(), 'dashboard', 'dist');
+
+        const relPath = req.url === '/dashboard' || req.url === '/dashboard/' ? '/index.html' : req.url.replace('/dashboard', '');
+
+        let filePath = join(publicRoot, relPath);
+        if (!existsSync(filePath)) {
+          filePath = join(distRoot, relPath);
+        }
+
+        if (existsSync(filePath)) {
+          try {
+            const contents = readFileSync(filePath);
+            // crude content-type detection
+            const ct = filePath.endsWith('.html') ? 'text/html' : filePath.endsWith('.js') ? 'application/javascript' : filePath.endsWith('.css') ? 'text/css' : 'application/octet-stream';
+            res.setHeader('Content-Type', ct);
+            res.writeHead(200);
+            res.end(contents);
+            return;
+          } catch (err) {
+            logger.warn(`Failed serving dashboard file ${filePath}: ${err instanceof Error ? err.message : String(err)}`);
+          }
+        }
+        // If not found, continue to API routing
+      }
 
       if (req.url === '/health') {
         res.writeHead(200);
@@ -40,6 +72,58 @@ class RelayServer {
         const sessions = this.sessionManager.getAllSessions();
         res.writeHead(200);
         res.end(JSON.stringify({ sessions }));
+      } else if (req.url && req.url.startsWith('/sessions/') && req.method === 'GET') {
+        // GET /sessions/:token -> session details
+        const token = req.url.split('/')[2];
+        if (!token) {
+          res.writeHead(400);
+          res.end(JSON.stringify({ error: 'Missing token' }));
+          return;
+        }
+
+        const info = this.sessionManager.getSessionInfo(token);
+        if (!info) {
+          res.writeHead(404);
+          res.end(JSON.stringify({ error: 'Session not found' }));
+          return;
+        }
+
+        res.writeHead(200);
+        res.end(JSON.stringify({ session: info }));
+      } else if (req.url && req.url.startsWith('/sessions/') && req.method === 'POST') {
+        // POST /sessions/:token/restart or /sessions/:token/immediate
+        const parts = req.url.split('/');
+        const token = parts[2];
+        const action = parts[3];
+
+        if (!token || !action) {
+          res.writeHead(400);
+          res.end(JSON.stringify({ error: 'Missing token or action' }));
+          return;
+        }
+
+        if (!this.sessionManager.sessionExists(token)) {
+          res.writeHead(404);
+          res.end(JSON.stringify({ error: 'Session not found' }));
+          return;
+        }
+
+        if (action === 'restart') {
+          const count = this.sessionManager.broadcastRestartByToken(token);
+          res.writeHead(200);
+          res.end(JSON.stringify({ result: 'broadcasted', sentTo: count }));
+          return;
+        }
+
+        if (action === 'immediate') {
+          const count = this.sessionManager.broadcastImmediateStartByToken(token);
+          res.writeHead(200);
+          res.end(JSON.stringify({ result: 'broadcasted', sentTo: count }));
+          return;
+        }
+
+        res.writeHead(400);
+        res.end(JSON.stringify({ error: 'Unknown action' }));
       } else {
         res.writeHead(404);
         res.end(JSON.stringify({ error: 'Not found' }));
@@ -47,6 +131,11 @@ class RelayServer {
     });
 
     this.wss = new WebSocketServer({ server: this.httpServer });
+    // Subscribe to session manager events and forward to admin clients
+    this.sessionManager.on('session_created', (payload: any) => this.broadcastToAdmins({ type: 'SESSIONS_UPDATE', timestamp: Date.now(), payload: { sessions: this.sessionManager.getAllSessions(), event: 'session_created', data: payload } }));
+    this.sessionManager.on('session_updated', (payload: any) => this.broadcastToAdmins({ type: 'SESSIONS_UPDATE', timestamp: Date.now(), payload: { sessions: this.sessionManager.getAllSessions(), event: 'session_updated', data: payload } }));
+    this.sessionManager.on('session_removed', (payload: any) => this.broadcastToAdmins({ type: 'SESSIONS_UPDATE', timestamp: Date.now(), payload: { sessions: this.sessionManager.getAllSessions(), event: 'session_removed', data: payload } }));
+    this.sessionManager.on('activity', (payload: any) => this.broadcastToAdmins({ type: 'ACTIVITY', timestamp: Date.now(), payload }));
     this.setupWebSocket();
   }
 
@@ -76,11 +165,15 @@ class RelayServer {
         this.sessionManager.removeClient(clientId);
         this.clientIds.delete(ws);
         this.clientIps.delete(ws);
+        // remove from admin clients if present
+        if (this.adminClients.has(ws)) this.adminClients.delete(ws);
       });
 
       ws.on('error', (error) => {
         logger.error(`WebSocket error for ${clientId}`, error);
       });
+
+      // If admin connects via WS and sends ADMIN_SUBSCRIBE, they will be added in handleMessage
 
       // Send welcome
       this.send(ws, {
@@ -95,6 +188,17 @@ class RelayServer {
     logger.info(`Message from ${clientId}: ${message.type}`);
 
     switch (message.type) {
+      case 'ADMIN_SUBSCRIBE':
+        this.adminClients.add(ws);
+        logger.info(`Admin subscribed: ${clientId}`);
+        // Send initial sessions list
+        this.send(ws, { type: 'SESSIONS_UPDATE', timestamp: Date.now(), payload: { sessions: this.sessionManager.getAllSessions() } });
+        return;
+
+      case 'ADMIN_UNSUBSCRIBE':
+        this.adminClients.delete(ws);
+        logger.info(`Admin unsubscribed: ${clientId}`);
+        return;
       case 'CREATE_SESSION':
         const createSessionIp = this.clientIps.get(ws) || 'unknown';
         const { token, isNew } = this.sessionManager.findOrCreateSessionByIp(
@@ -263,6 +367,8 @@ class RelayServer {
         }
         break;
 
+        // other non-handled messages fall through to default below
+
       default:
         logger.warn(`Unknown message type: ${message.type}`);
     }
@@ -272,6 +378,18 @@ class RelayServer {
     if (ws.readyState === WebSocket.OPEN) {
       ws.send(JSON.stringify(data));
     }
+  }
+
+  private broadcastToAdmins(data: any): void {
+    this.adminClients.forEach(ws => {
+      if (ws.readyState === WebSocket.OPEN) {
+        try {
+          ws.send(JSON.stringify(data));
+        } catch (err) {
+          logger.warn(`Failed to send to admin: ${err instanceof Error ? err.message : String(err)}`);
+        }
+      }
+    });
   }
 
   start(): void {
