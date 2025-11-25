@@ -297,9 +297,9 @@ export class SessionManager {
   }
 
   /**
-   * Forward restart request from follower to controller
+   * Forward game status from follower to controller
    */
-  forwardRestartRequest(followerClientId: string): boolean {
+  forwardGameStatus(followerClientId: string, gameRunning: boolean): boolean {
     const token = this.clientToSession.get(followerClientId);
     if (!token) return false;
 
@@ -308,15 +308,16 @@ export class SessionManager {
 
     try {
       session.controller.ws.send(JSON.stringify({
-        type: 'GAME_RUNNING_RESTART_REQUEST',
+        type: 'GAME_STATUS',
         timestamp: Date.now(),
-        fromFollower: followerClientId
+        fromFollower: followerClientId,
+        gameRunning
       }));
-      this.logger.info(`Restart request forwarded from follower ${followerClientId} to controller for session: ${token}`);
-        this.emitter.emit('activity', { level: 'info', message: `Restart request forwarded from follower ${followerClientId} to controller for session ${token}`, timestamp: Date.now() });
+      this.logger.info(`Game status (${gameRunning ? 'RUNNING' : 'STOPPED'}) forwarded from follower ${followerClientId} to controller for session: ${token}`);
+      this.emitter.emit('activity', { level: 'info', message: `Game status forwarded from follower ${followerClientId} to controller for session ${token}`, timestamp: Date.now() });
       return true;
     } catch (error) {
-      this.logger.error('Failed to forward restart request', error as Error);
+      this.logger.error('Failed to forward game status', error as Error);
       return false;
     }
   }

@@ -10,10 +10,11 @@ import crypto from 'crypto';
 const logger = new Logger('RelayServer');
 
 interface ClientMessage {
-  type: 'JOIN' | 'HEARTBEAT' | 'RESTART' | 'CREATE_SESSION' | 'STATUS_UPDATE' | 'STATUS_REQUEST' | 'IMMEDIATE_START' | 'GAME_RUNNING_RESTART_REQUEST' | 'ADMIN_SUBSCRIBE' | 'ADMIN_UNSUBSCRIBE';
+  type: 'JOIN' | 'HEARTBEAT' | 'RESTART' | 'CREATE_SESSION' | 'STATUS_UPDATE' | 'STATUS_REQUEST' | 'IMMEDIATE_START' | 'GAME_STATUS' | 'ADMIN_SUBSCRIBE' | 'ADMIN_UNSUBSCRIBE';
   sessionToken?: string;
   role?: 'controller' | 'follower';
   status?: { clientRunning: boolean; processCount?: number };
+  gameRunning?: boolean;
 }
 
 class RelayServer {
@@ -351,18 +352,18 @@ class RelayServer {
         });
         break;
 
-      case 'GAME_RUNNING_RESTART_REQUEST':
-        // Follower requests restart when game is running
-        const restartRequested = this.sessionManager.forwardRestartRequest(clientId);
-        if (restartRequested) {
+      case 'GAME_STATUS':
+        // Follower sends game status to controller
+        const gameStatusSent = this.sessionManager.forwardGameStatus(clientId, message.gameRunning ?? false);
+        if (gameStatusSent) {
           this.send(ws, {
-            type: 'RESTART_REQUEST_SENT',
-            message: 'Restart request forwarded to controller'
+            type: 'GAME_STATUS_RECEIVED',
+            message: 'Game status forwarded to controller'
           });
         } else {
           this.send(ws, {
             type: 'ERROR',
-            message: 'Failed to forward restart request to controller'
+            message: 'Failed to forward game status to controller'
           });
         }
         break;

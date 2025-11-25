@@ -1,0 +1,96 @@
+# Build results
+[Dd]ebug/
+[Rr]elease/
+x64/
+x86/
+[Bb]in/
+[Oo]bj/
+[Ll]og/
+[Ll]ogs/
+
+# Visual Studio
+.vs/
+*.user
+*.userosscache
+*.sln.docstates
+*.suo
+*.cache
+*.vspscc
+*.vssscc
+
+# Rider
+.idea/
+
+# User-specific files
+*.rsuser
+*.userprefs
+
+# Build results of an ATL project
+[Dd]ebugPS/
+[Rr]eleasePS/
+dlldata.c
+
+# .NET Core
+project.lock.json
+project.fragment.lock.json
+artifacts/
+
+# NuGet
+*.nupkg
+*.snupkg
+.nuget/
+packages/
+*.nuget.props
+*.nuget.targets
+
+# MSBuild
+*.log
+msbuild.wrn
+msbuild.err
+
+# Publish
+[Pp]ublish/
+[Pp]ublished/
+
+# Test results
+[Tt]est[Rr]esult*/
+*.trx
+*.coverage
+*.coveragexml
+
+# Resharper
+_ReSharper*/
+*.DotSettings.user
+
+# JetBrains Rider
+*.sln.iml
+
+# NCrunch
+*.ncrunch*
+_NCrunch_*
+.*crunch*.local.xml
+nCrunchTemp_*
+
+# Code coverage
+coverage*.json
+coverage*.xml
+coverage*.info
+
+# Temp files
+*~
+*.tmp
+*.temp
+
+# OS generated files
+.DS_Store
+.DS_Store?
+._*
+.Spotlight-V100
+.Trashes
+ehthumbs.db
+Thumbs.db
+desktop.ini
+
+# Application specific
+appsettings.Development.json
+appsettings.Local.json
