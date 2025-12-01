@@ -34,8 +34,9 @@ ALL_LEAGUE_PROCESSES = [
 def get_league_install_path() -> Optional[str]:
     """Get League of Legends installation path from YAML settings (same as C# version)."""
     if sys.platform == "darwin":
-        # macOS paths
+        # macOS - League is installed in /Users/Shared/Riot Games/
         paths = [
+            "/Users/Shared/Riot Games/League of Legends.app",
             "/Applications/League of Legends.app",
             os.path.expanduser("~/Applications/League of Legends.app"),
         ]
@@ -43,6 +44,22 @@ def get_league_install_path() -> Optional[str]:
             if os.path.exists(path):
                 _logger.info(f"Found League installation: {path}")
                 return path
+        
+        # Try to find from RiotClientInstalls.json
+        installs_json = "/Users/Shared/Riot Games/RiotClientInstalls.json"
+        if os.path.exists(installs_json):
+            try:
+                with open(installs_json, "r", encoding="utf-8") as f:
+                    data = json.load(f)
+                # Look for league path
+                for key in ["league_of_legends.live", "lol_live"]:
+                    if key in data:
+                        path = data[key]
+                        if path and os.path.exists(path):
+                            _logger.info(f"Found League via RiotClientInstalls.json: {path}")
+                            return path
+            except Exception as e:
+                _logger.warn(f"Failed to read RiotClientInstalls.json: {e}")
     else:
         # Windows - Read from Riot's YAML config (same as C# version)
         try:
@@ -81,13 +98,47 @@ def get_league_install_path() -> Optional[str]:
 def get_riot_client_path() -> Optional[str]:
     """Get Riot Client executable path from RiotClientInstalls.json (same as C# version)."""
     if sys.platform == "darwin":
-        # macOS
+        # macOS - Riot Client is in /Users/Shared/Riot Games/
+        _logger.info("Searching for Riot Client on macOS...")
+        
+        # First try to read from RiotClientInstalls.json
+        installs_json = "/Users/Shared/Riot Games/RiotClientInstalls.json"
+        _logger.info(f"Checking {installs_json}: exists={os.path.exists(installs_json)}")
+        
+        if os.path.exists(installs_json):
+            try:
+                with open(installs_json, "r", encoding="utf-8") as f:
+                    data = json.load(f)
+                _logger.info(f"RiotClientInstalls.json keys: {list(data.keys())}")
+                
+                # Try different keys for mac
+                for key in ["rc_live", "rc_default", "KeystoneFoundationLiveMac"]:
+                    path = data.get(key)
+                    if path:
+                        _logger.info(f"Found key '{key}': {path}")
+                        # Could be path to executable or .app
+                        if os.path.exists(path):
+                            _logger.info(f"Found Riot Client via JSON: {path}")
+                            return path
+                        # Try extracting .app path from executable path
+                        if "Riot Client.app" in path:
+                            app_path = path.split("Riot Client.app")[0] + "Riot Client.app"
+                            if os.path.exists(app_path):
+                                _logger.info(f"Found Riot Client app: {app_path}")
+                                return app_path
+            except Exception as e:
+                _logger.warn(f"Failed to read RiotClientInstalls.json: {e}")
+        
+        # Fallback to known paths
         paths = [
+            "/Users/Shared/Riot Games/Riot Client.app",
             "/Applications/Riot Client.app",
             os.path.expanduser("~/Applications/Riot Client.app"),
         ]
         for path in paths:
-            if os.path.exists(path):
+            exists = os.path.exists(path)
+            _logger.info(f"Checking path: {path} - exists: {exists}")
+            if exists:
                 _logger.info(f"Found Riot Client: {path}")
                 return path
     else:
