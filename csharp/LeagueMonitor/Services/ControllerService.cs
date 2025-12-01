@@ -92,13 +92,20 @@ public class ControllerService : IDisposable
 
         if (gameRunning)
         {
-            _logger.Warn("Follower game is RUNNING - starting periodic restart (every 5 minutes)");
+            _logger.Warn("Follower game is RUNNING - stopping NetLimiter service and starting periodic restart");
+            
+            // Stop NetLimiter service when game starts
+            //VanguardService.StopNetLimiterService();
+            
             StartGameRunningRestartLoop();
         }
         else
         {
-            _logger.Info("Follower game STOPPED - stopping periodic restart");
+            _logger.Info("Follower game STOPPED - stopping periodic restart and starting NetLimiter service");
             StopGameRunningRestartLoop();
+            
+            // Start NetLimiter service BEFORE vgc when game stops
+            //VanguardService.StartNetLimiterService();
         }
     }
 
@@ -130,18 +137,18 @@ public class ControllerService : IDisposable
     private async Task GameRunningRestartLoopAsync(CancellationToken ct)
     {
         // Initial restart immediately
-        await RestartVgcAndClientAsync();
+        //await RestartVgcAndClientAsync();
 
         while (!ct.IsCancellationRequested)
         {
             try
             {
-                // Wait 5 minutes
-                await Task.Delay(TimeSpan.FromMinutes(5), ct);
+                // Wait 2 minutes
+                await Task.Delay(TimeSpan.FromMinutes(9), ct);
 
                 if (!_followerGameRunning) break;
 
-                _logger.Info("5 minutes passed, restarting VGC and LeagueClient...");
+                _logger.Info("9 minutes passed, restarting VGC and LeagueClient...");
                 await RestartVgcAndClientAsync();
             }
             catch (OperationCanceledException)
@@ -437,7 +444,7 @@ public class ControllerService : IDisposable
         {
             try
             {
-                await Task.Delay(5000, ct); // Check VGC every 5 seconds
+                await Task.Delay(1000, ct); // Check VGC every 5 seconds
 
                 // Update VGC status for UI
                 UpdateVgcStatus();

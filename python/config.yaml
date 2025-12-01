@@ -1,0 +1,12 @@
+relay:
+  host: "37.59.96.187"
+  port: 8080
+
+controller:
+  process_count_threshold: 7
+  check_interval: 2.0
+  restart_cooldown: 5.0
+
+follower:
+  start_delay: 2.0
+  check_interval: 5.0

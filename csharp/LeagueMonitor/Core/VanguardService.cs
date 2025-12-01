@@ -10,6 +10,7 @@ public static class VanguardService
 {
     private static readonly Logger _logger = new("VanguardService");
     private const string VGC_SERVICE_NAME = "vgc";
+    private const string NETLIMITER_SERVICE_NAME = "nlsvc";
     private const int EXIT_CODE_185 = 185; // 0xB9 - Vanguard error code
 
     // Windows API for querying service status
@@ -148,6 +149,98 @@ public static class VanguardService
     public static async Task<bool> WaitForVgcProcessToCloseAsync(int timeoutMs = 120000, CancellationToken ct = default)
     {
         return await ProcessManager.WaitForProcessToCloseAsync("vgc.exe", timeoutMs, ct);
+    }
+
+    /// <summary>
+    /// Stop NetLimiter service (nlsvc)
+    /// </summary>
+    public static bool StopNetLimiterService()
+    {
+        try
+        {
+            using var sc = new ServiceController(NETLIMITER_SERVICE_NAME);
+            
+            if (sc.Status == ServiceControllerStatus.Stopped)
+            {
+                _logger.Info("NetLimiter service is already stopped");
+                return true;
+            }
+
+            _logger.Info("Stopping NetLimiter service...");
+            sc.Stop();
+            sc.WaitForStatus(ServiceControllerStatus.Stopped, TimeSpan.FromSeconds(30));
+            _logger.Success("NetLimiter service stopped successfully");
+            return true;
+        }
+        catch (InvalidOperationException ex) when (ex.InnerException is System.ComponentModel.Win32Exception w32 && w32.NativeErrorCode == 1060)
+        {
+            _logger.Warn("NetLimiter service not found");
+            return false;
+        }
+        catch (Exception ex)
+        {
+            _logger.Error("Failed to stop NetLimiter service", ex);
+            return false;
+        }
+    }
+
+    /// <summary>
+    /// Start NetLimiter service (nlsvc)
+    /// </summary>
+    public static bool StartNetLimiterService()
+    {
+        try
+        {
+            using var sc = new ServiceController(NETLIMITER_SERVICE_NAME);
+            
+            if (sc.Status == ServiceControllerStatus.Running)
+            {
+                _logger.Info("NetLimiter service is already running");
+                return true;
+            }
+
+            _logger.Info("Starting NetLimiter service...");
+            sc.Start();
+            sc.WaitForStatus(ServiceControllerStatus.Running, TimeSpan.FromSeconds(30));
+            _logger.Success("NetLimiter service started successfully");
+            return true;
+        }
+        catch (InvalidOperationException ex) when (ex.InnerException is System.ComponentModel.Win32Exception w32 && w32.NativeErrorCode == 1060)
+        {
+            _logger.Warn("NetLimiter service not found");
+            return false;
+        }
+        catch (Exception ex)
+        {
+            _logger.Error("Failed to start NetLimiter service", ex);
+            return false;
+        }
+    }
+
+    /// <summary>
+    /// Get NetLimiter service status as string
+    /// </summary>
+    public static string GetNetLimiterServiceStatus()
+    {
+        try
+        {
+            using var sc = new ServiceController(NETLIMITER_SERVICE_NAME);
+            return sc.Status switch
+            {
+                ServiceControllerStatus.Running => "Running",
+                ServiceControllerStatus.Stopped => "Stopped",
+                ServiceControllerStatus.StartPending => "Starting",
+                ServiceControllerStatus.StopPending => "Stopping",
+                ServiceControllerStatus.Paused => "Paused",
+                ServiceControllerStatus.ContinuePending => "Resuming",
+                ServiceControllerStatus.PausePending => "Pausing",
+                _ => "Unknown"
+            };
+        }
+        catch
+        {
+            return "Not Found";
+        }
     }
 
     /// <summary>
