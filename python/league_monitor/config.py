@@ -21,7 +21,7 @@ class RelayConfig:
 @dataclass
 class ControllerConfig:
     """Controller mode configuration."""
-    process_count_threshold: int = 7
+    process_count_threshold: int = 2
     check_interval: float = 2.0
     restart_cooldown: float = 5.0
 
