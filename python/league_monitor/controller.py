@@ -1,6 +1,7 @@
 """Controller service - monitors League Client and broadcasts commands."""
 
 import asyncio
+import sys
 from typing import Optional
 
 from .config import get_config
@@ -99,6 +100,16 @@ class ControllerService:
 
     async def _monitor_loop(self) -> None:
         """Main monitoring loop."""
+        # macOS: threshold = 2, Windows: threshold from config (default 7)
+        if sys.platform == "darwin":
+            threshold = 2
+            delay_before_send = 5.0  # 5 seconds delay for macOS
+            self._logger.info(f"macOS detected: using threshold={threshold}, delay={delay_before_send}s")
+        else:
+            threshold = self._config.process_count_threshold
+            delay_before_send = 0.0
+            self._logger.info(f"Windows detected: using threshold={threshold}")
+
         while self._running:
             try:
                 await asyncio.sleep(self._config.check_interval)
@@ -119,10 +130,17 @@ class ControllerService:
                     self._immediate_start_sent = False  # Reset flag
                     await self._ensure_client_running()
                 
-                elif client_running and process_count > self._config.process_count_threshold:
+                elif client_running and process_count >= threshold:
                     # Client is running and process count threshold reached
                     if not self._immediate_start_sent:
-                        self._logger.success(f"Process count {process_count} > {self._config.process_count_threshold}! Sending IMMEDIATE_START...")
+                        self._logger.success(f"Process count {process_count} >= {threshold}!")
+                        
+                        # Wait before sending (macOS: 5s, Windows: 0s)
+                        if delay_before_send > 0:
+                            self._logger.info(f"Waiting {delay_before_send}s before sending IMMEDIATE_START...")
+                            await asyncio.sleep(delay_before_send)
+                        
+                        self._logger.success("Sending IMMEDIATE_START to followers...")
                         self._immediate_start_sent = True
                         await self._relay_client.broadcast_immediate_start()
 
