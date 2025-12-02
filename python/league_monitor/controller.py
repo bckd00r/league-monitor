@@ -103,7 +103,7 @@ class ControllerService:
         # macOS: threshold = 2, Windows: threshold from config (default 7)
         if sys.platform == "darwin":
             threshold = 2
-            delay_before_send = 5.0  # 5 seconds delay for macOS
+            delay_before_send = 15.0  # 5 seconds delay for macOS
             self._logger.info(f"macOS detected: using threshold={threshold}, delay={delay_before_send}s")
         else:
             threshold = self._config.process_count_threshold
