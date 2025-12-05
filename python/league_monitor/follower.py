@@ -167,11 +167,18 @@ class FollowerService:
         """Handle status update from controller."""
         client_running = status.get("clientRunning", False)
         process_count = status.get("processCount", 0)
+        client_ready = status.get("clientReady", False)
         
         self._logger.info(
-            f"Controller status: LeagueClient is {'RUNNING' if client_running else 'NOT RUNNING'}, "
-            f"Process count: {process_count}"
+            f"Controller status: LeagueClient {'RUNNING' if client_running else 'NOT RUNNING'}, "
+            f"Process count: {process_count}, Ready: {client_ready}"
         )
+        
+        # If controller's client is ready, start our client (fallback if IMMEDIATE_START was missed)
+        if client_ready and client_running:
+            if not is_league_client_running() and not self._is_starting_client:
+                self._logger.info("Controller is ready, starting our LeagueClient...")
+                asyncio.create_task(self._launch_client())
 
     async def _launch_client(self) -> None:
         """Launch League Client."""

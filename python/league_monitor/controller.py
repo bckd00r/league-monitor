@@ -7,9 +7,12 @@ from typing import Optional
 from .config import get_config
 from .league_utils import (
     get_league_process_count,
+    get_macos_leagueclientux_count,
     is_league_client_running,
+    is_macos_client_ready,
     kill_league_client,
     launch_league_client,
+    MACOS_LEAGUECLIENTUX_THRESHOLD,
 )
 from .logger import Logger
 from .relay_client import ClientRole, RelayClient
@@ -56,10 +59,38 @@ class ControllerService:
 
         @self._relay_client.on_status_request
         def on_status_request() -> dict:
+            """Handle status request from follower - if client is ready, tell them to start."""
             is_running = is_league_client_running()
-            process_count = get_league_process_count()
-            self._logger.info(f"Status check: LeagueClient is {'RUNNING' if is_running else 'NOT RUNNING'}, Process count: {process_count}")
-            return {"clientRunning": is_running, "processCount": process_count}
+            
+            if sys.platform == "darwin":
+                # macOS: use LeagueClientUx count
+                ux_count = get_macos_leagueclientux_count()
+                client_ready = ux_count >= MACOS_LEAGUECLIENTUX_THRESHOLD
+                self._logger.info(
+                    f"Status request: LeagueClient {'RUNNING' if is_running else 'NOT RUNNING'}, "
+                    f"LeagueClientUx count: {ux_count}, Ready: {client_ready}"
+                )
+                
+                # If client is ready and a new follower is asking, send IMMEDIATE_START
+                if client_ready and is_running:
+                    self._logger.info("Client is ready, sending IMMEDIATE_START to new follower...")
+                    asyncio.create_task(self._relay_client.broadcast_immediate_start())
+                
+                return {"clientRunning": is_running, "processCount": ux_count, "clientReady": client_ready}
+            else:
+                # Windows: use config threshold
+                process_count = get_league_process_count()
+                client_ready = process_count > self._config.process_count_threshold
+                self._logger.info(
+                    f"Status request: LeagueClient {'RUNNING' if is_running else 'NOT RUNNING'}, "
+                    f"Process count: {process_count}, Ready: {client_ready}"
+                )
+                
+                if client_ready and is_running:
+                    self._logger.info("Client is ready, sending IMMEDIATE_START to new follower...")
+                    asyncio.create_task(self._relay_client.broadcast_immediate_start())
+                
+                return {"clientRunning": is_running, "processCount": process_count, "clientReady": client_ready}
 
     async def start(self) -> None:
         """Start controller service."""
@@ -100,26 +131,33 @@ class ControllerService:
 
     async def _monitor_loop(self) -> None:
         """Main monitoring loop."""
-        # macOS: threshold = 2, Windows: threshold from config (default 7)
-        if sys.platform == "darwin":
-            threshold = 2
-            delay_before_send = 15.0  # 5 seconds delay for macOS
-            self._logger.info(f"macOS detected: using threshold={threshold}, delay={delay_before_send}s")
+        # macOS: use LeagueClientUx count with threshold 7
+        # Windows: use config threshold (default 7)
+        is_macos = sys.platform == "darwin"
+        
+        if is_macos:
+            threshold = MACOS_LEAGUECLIENTUX_THRESHOLD  # 7
+            self._logger.info(f"macOS detected: using LeagueClientUx threshold={threshold}")
         else:
             threshold = self._config.process_count_threshold
-            delay_before_send = 0.0
-            self._logger.info(f"Windows detected: using threshold={threshold}")
+            self._logger.info(f"Windows detected: using process threshold={threshold}")
 
         while self._running:
             try:
                 await asyncio.sleep(self._config.check_interval)
 
-                # Check process count
-                process_count = get_league_process_count()
+                # Check process count (macOS uses LeagueClientUx, Windows uses all processes)
+                if is_macos:
+                    process_count = get_macos_leagueclientux_count()
+                else:
+                    process_count = get_league_process_count()
                 
                 if process_count != self._last_process_count:
                     self._last_process_count = process_count
-                    self._logger.info(f"Process count: {process_count}")
+                    if is_macos:
+                        self._logger.info(f"LeagueClientUx count: {process_count}")
+                    else:
+                        self._logger.info(f"Process count: {process_count}")
 
                 # Check if client is running
                 client_running = is_league_client_running()
@@ -127,19 +165,13 @@ class ControllerService:
                 if not client_running and not self._is_restarting_client:
                     # Client stopped - restart it
                     self._logger.warn("LeagueClient is not running!")
-                    self._immediate_start_sent = False  # Reset flag
+                    self._immediate_start_sent = False  # Reset flag for next restart
                     await self._ensure_client_running()
                 
                 elif client_running and process_count >= threshold:
-                    # Client is running and process count threshold reached
+                    # Client is running and threshold reached
                     if not self._immediate_start_sent:
-                        self._logger.success(f"Process count {process_count} >= {threshold}!")
-                        
-                        # Wait before sending (macOS: 5s, Windows: 0s)
-                        if delay_before_send > 0:
-                            self._logger.info(f"Waiting {delay_before_send}s before sending IMMEDIATE_START...")
-                            await asyncio.sleep(delay_before_send)
-                        
+                        self._logger.success(f"{'LeagueClientUx' if is_macos else 'Process'} count {process_count} >= {threshold}!")
                         self._logger.success("Sending IMMEDIATE_START to followers...")
                         self._immediate_start_sent = True
                         await self._relay_client.broadcast_immediate_start()

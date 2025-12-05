@@ -3,6 +3,7 @@
 import json
 import os
 import re
+import subprocess
 import sys
 from typing import Optional
 
@@ -29,6 +30,9 @@ ALL_LEAGUE_PROCESSES = [
     "LeagueClientUx",
     "LeagueClientUxRender",
 ]
+
+# macOS threshold for LeagueClientUx
+MACOS_LEAGUECLIENTUX_THRESHOLD = 7
 
 
 def get_league_install_path() -> Optional[str]:
@@ -207,7 +211,62 @@ def is_league_game_running() -> bool:
 
 def get_league_process_count() -> int:
     """Get count of League-related processes."""
+    if sys.platform == "darwin":
+        # macOS: use pgrep for accurate counting
+        return get_macos_league_process_count()
     return process_manager.get_process_count(ALL_LEAGUE_PROCESSES)
+
+
+def get_macos_league_process_count() -> int:
+    """Get count of League processes on macOS using pgrep."""
+    try:
+        # pgrep -l -i league returns all league-related processes
+        result = subprocess.run(
+            ["pgrep", "-l", "-i", "league"],
+            capture_output=True,
+            text=True
+        )
+        if result.returncode == 0 and result.stdout.strip():
+            lines = result.stdout.strip().split('\n')
+            count = len(lines)
+            _logger.debug(f"pgrep found {count} league processes")
+            return count
+        return 0
+    except Exception as e:
+        _logger.warn(f"pgrep failed: {e}")
+        # Fallback to psutil
+        return process_manager.get_process_count(ALL_LEAGUE_PROCESSES)
+
+
+def get_macos_leagueclientux_count() -> int:
+    """Get count of LeagueClientUx processes on macOS using pgrep."""
+    try:
+        # Count LeagueClientUx specifically
+        result = subprocess.run(
+            ["pgrep", "-i", "LeagueClientUx"],
+            capture_output=True,
+            text=True
+        )
+        if result.returncode == 0 and result.stdout.strip():
+            lines = result.stdout.strip().split('\n')
+            count = len(lines)
+            _logger.debug(f"pgrep found {count} LeagueClientUx processes")
+            return count
+        return 0
+    except Exception as e:
+        _logger.warn(f"pgrep LeagueClientUx failed: {e}")
+        return 0
+
+
+def is_macos_client_ready() -> bool:
+    """Check if macOS client is ready (LeagueClientUx count >= threshold)."""
+    if sys.platform != "darwin":
+        return False
+    count = get_macos_leagueclientux_count()
+    ready = count >= MACOS_LEAGUECLIENTUX_THRESHOLD
+    if ready:
+        _logger.info(f"macOS client ready: LeagueClientUx count {count} >= {MACOS_LEAGUECLIENTUX_THRESHOLD}")
+    return ready
 
 
 def kill_league_client() -> None:
