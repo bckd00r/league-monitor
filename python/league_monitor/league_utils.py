@@ -228,9 +228,7 @@ def get_macos_league_process_count() -> int:
         )
         if result.returncode == 0 and result.stdout.strip():
             lines = result.stdout.strip().split('\n')
-            count = len(lines)
-            _logger.debug(f"pgrep found {count} league processes")
-            return count
+            return len(lines)
         return 0
     except Exception as e:
         _logger.warn(f"pgrep failed: {e}")
@@ -249,9 +247,7 @@ def get_macos_leagueclientux_count() -> int:
         )
         if result.returncode == 0 and result.stdout.strip():
             lines = result.stdout.strip().split('\n')
-            count = len(lines)
-            _logger.debug(f"pgrep found {count} LeagueClientUx processes")
-            return count
+            return len(lines)
         return 0
     except Exception as e:
         _logger.warn(f"pgrep LeagueClientUx failed: {e}")

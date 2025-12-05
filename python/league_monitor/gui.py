@@ -351,15 +351,17 @@ class LeagueMonitorApp(ctk.CTk):
 
     def _setup_logging(self) -> None:
         """Redirect logger to GUI."""
+        from datetime import datetime
         from . import logger as log_module
         
         original_log = Logger._log
         
         def gui_log(self_logger, level, message):
             original_log(self_logger, level, message)
-            # Update GUI in main thread
+            # Update GUI in main thread with timestamp
+            timestamp = datetime.now().strftime("%H:%M:%S")
             self.after(0, lambda: self._log_frame.add_log(
-                f"[{self_logger._name}] {message}",
+                f"[{timestamp}] [{self_logger._name}] {message}",
                 level.value
             ))
         
@@ -396,40 +398,71 @@ class LeagueMonitorApp(ctk.CTk):
         self._running_frame.grid(row=1, column=0, padx=15, pady=5, sticky="ew")
 
     def _setup_controller_handlers(self) -> None:
-        """Setup controller event handlers."""
+        """Setup controller UI event handlers (wraps existing handlers)."""
         service = self._service
+        relay = service._relay_client
         
-        @service._relay_client.on_connected
+        # Store original handlers
+        orig_on_connected = relay._on_connected
+        orig_on_disconnected = relay._on_disconnected
+        orig_on_session_created = relay._on_session_created
+        orig_on_joined = relay._on_joined
+        
+        # Wrap with UI updates
         def on_connected():
+            if orig_on_connected:
+                orig_on_connected()
             self.after(0, lambda: self._running_frame.set_connected(True))
-
-        @service._relay_client.on_disconnected  
+        
         def on_disconnected():
+            if orig_on_disconnected:
+                orig_on_disconnected()
             self.after(0, lambda: self._running_frame.set_connected(False))
-
-        @service._relay_client.on_session_created
+        
         def on_session_created(token: str):
+            if orig_on_session_created:
+                orig_on_session_created(token)
             self.after(0, lambda: self._running_frame.set_token(token))
-
-        @service._relay_client.on_joined
+        
         def on_joined(token: str, info: dict):
+            if orig_on_joined:
+                orig_on_joined(token, info)
             self.after(0, lambda: self._running_frame.set_token(token))
+        
+        relay._on_connected = on_connected
+        relay._on_disconnected = on_disconnected
+        relay._on_session_created = on_session_created
+        relay._on_joined = on_joined
 
     def _setup_follower_handlers(self) -> None:
-        """Setup follower event handlers."""
+        """Setup follower UI event handlers (wraps existing handlers)."""
         service = self._service
+        relay = service._relay_client
         
-        @service._relay_client.on_connected
+        # Store original handlers
+        orig_on_connected = relay._on_connected
+        orig_on_disconnected = relay._on_disconnected
+        orig_on_joined = relay._on_joined
+        
+        # Wrap with UI updates
         def on_connected():
+            if orig_on_connected:
+                orig_on_connected()
             self.after(0, lambda: self._running_frame.set_connected(True))
-
-        @service._relay_client.on_disconnected
+        
         def on_disconnected():
+            if orig_on_disconnected:
+                orig_on_disconnected()
             self.after(0, lambda: self._running_frame.set_connected(False))
-
-        @service._relay_client.on_joined
+        
         def on_joined(token: str, info: dict):
+            if orig_on_joined:
+                orig_on_joined(token, info)
             self.after(0, lambda: self._running_frame.set_token(token))
+        
+        relay._on_connected = on_connected
+        relay._on_disconnected = on_disconnected
+        relay._on_joined = on_joined
 
     def _start_service_thread(self, token: Optional[str] = None) -> None:
         """Start service in background thread."""
