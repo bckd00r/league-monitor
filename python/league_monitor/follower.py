@@ -135,16 +135,15 @@ class FollowerService:
             self._logger.info("League game is running, skipping LeagueClient launch")
             return
 
-        # Kill existing client if running (restart scenario)
+        # Only start if client is NOT running
         if is_league_client_running():
-            self._logger.info("LeagueClient is already running, killing and restarting...")
-            kill_league_client()
-            await asyncio.sleep(1)
+            self._logger.info("LeagueClient is already running, no action needed.")
+            return
 
         await self._launch_client()
 
     async def _handle_client_restarted(self) -> None:
-        """Handle client restarted command from controller."""
+        """Handle client restarted command from controller - restart follower's client too."""
         self._logger.info("CLIENT_RESTARTED command received from controller!")
 
         if self._is_starting_client:
@@ -152,14 +151,14 @@ class FollowerService:
             return
 
         if is_league_game_running():
-            self._logger.info("League game is running, skipping LeagueClient launch")
+            self._logger.info("League game is running, skipping LeagueClient restart")
             return
 
-        # Kill existing client if running
+        # Kill existing client if running, then restart
         if is_league_client_running():
-            self._logger.info("LeagueClient is already running, killing and restarting...")
+            self._logger.info("Restarting LeagueClient...")
             kill_league_client()
-            await asyncio.sleep(1)
+            await asyncio.sleep(2)
 
         await self._launch_client()
 

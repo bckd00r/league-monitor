@@ -29,6 +29,7 @@ class ControllerService:
         self._running = False
         self._is_restarting_client = False
         self._immediate_start_sent = False
+        self._client_was_restarted = False  # Track if client was restarted (not first start)
         self._last_process_count = 0
         self._session_token: Optional[str] = None
         
@@ -112,11 +113,12 @@ class ControllerService:
         # Start monitoring tasks
         monitor_task = asyncio.create_task(self._monitor_loop())
         heartbeat_task = asyncio.create_task(self._heartbeat_loop())
+        follower_check_task = asyncio.create_task(self._follower_check_loop())
 
         self._logger.success("Controller is running!")
 
         try:
-            await asyncio.gather(relay_task, monitor_task, heartbeat_task)
+            await asyncio.gather(relay_task, monitor_task, heartbeat_task, follower_check_task)
         except asyncio.CancelledError:
             pass
         finally:
@@ -166,15 +168,25 @@ class ControllerService:
                     # Client stopped - restart it
                     self._logger.warn("LeagueClient is not running!")
                     self._immediate_start_sent = False  # Reset flag for next restart
+                    self._client_was_restarted = True   # Mark as restart (not first start)
                     await self._ensure_client_running()
                 
                 elif client_running and process_count >= threshold:
                     # Client is running and threshold reached
                     if not self._immediate_start_sent:
                         self._logger.success(f"{'LeagueClientUx' if is_macos else 'Process'} count {process_count} >= {threshold}!")
-                        self._logger.success("Sending IMMEDIATE_START to followers...")
+                        
+                        if self._client_was_restarted:
+                            # Client was restarted - tell followers to restart their clients too
+                            self._logger.success("Client was RESTARTED - sending CLIENT_RESTARTED to followers...")
+                            await self._relay_client.broadcast_restart()
+                            self._client_was_restarted = False
+                        else:
+                            # First start or new follower - just tell them to start
+                            self._logger.success("Sending IMMEDIATE_START to followers...")
+                            await self._relay_client.broadcast_immediate_start()
+                        
                         self._immediate_start_sent = True
-                        await self._relay_client.broadcast_immediate_start()
 
             except asyncio.CancelledError:
                 break
@@ -231,3 +243,45 @@ class ControllerService:
                 break
             except Exception as e:
                 self._logger.error("Heartbeat error", e)
+
+    async def _follower_check_loop(self) -> None:
+        """Periodically check and notify followers if client is ready.
+        
+        This ensures that:
+        - New followers get IMMEDIATE_START when they connect
+        - Followers whose client was killed get IMMEDIATE_START to restart
+        """
+        is_macos = sys.platform == "darwin"
+        threshold = MACOS_LEAGUECLIENTUX_THRESHOLD if is_macos else self._config.process_count_threshold
+        check_interval = 10.0  # Check every 10 seconds
+        
+        self._logger.info(f"Follower check loop started (interval: {check_interval}s)")
+        
+        while self._running:
+            try:
+                await asyncio.sleep(check_interval)
+                
+                if not self._relay_client.is_connected:
+                    continue
+                
+                # Check if our client is ready
+                client_running = is_league_client_running()
+                if not client_running:
+                    continue
+                
+                # Get process count
+                if is_macos:
+                    process_count = get_macos_leagueclientux_count()
+                else:
+                    process_count = get_league_process_count()
+                
+                # If ready, broadcast IMMEDIATE_START to all followers
+                # Followers will only start if their client is not running
+                if process_count >= threshold:
+                    self._logger.info(f"Periodic check: Ready (count={process_count}), broadcasting IMMEDIATE_START...")
+                    await self._relay_client.broadcast_immediate_start()
+                    
+            except asyncio.CancelledError:
+                break
+            except Exception as e:
+                self._logger.error("Follower check loop error", e)
